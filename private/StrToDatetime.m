@@ -22,5 +22,16 @@ function DT = StrToDatetime(Str, Format)
         %    Str{iStr} = [Str{iStr}, ':00'];
         %end
     end
-    DT = datetime(Str, 'InputFormat', Format);
+    % Format might get changed if not careful when manually editing.
+    try
+        DT = datetime(Str, 'InputFormat', Format);
+    catch ME
+        % Try LibreOffice Calc format...
+        try
+            DT = datetime(Str, 'InputFormat', 'yyyy-MM-dd HH:mm');
+        catch
+            error(ME);
+        end
+        warning('Date time format needs fixing.');
+    end
 end

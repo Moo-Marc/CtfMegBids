@@ -8,7 +8,7 @@ function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySe
         iLog = 1;
     end
     
-    % Check if path was passed by mistake.
+    % Ignore path.
     [Path, Name, Ext] = fileparts(FullName);
     if ~isempty(Path)
         FullName = [Name, Ext];

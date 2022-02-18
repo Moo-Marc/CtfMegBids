@@ -11,12 +11,12 @@ function T = BidsSessions(BidsFolder, Verbose)
     
     % Only looks at first recording in each _scans.tsv file.
     SubSes = dir(fullfile(BidsFolder, 'sub-*', 'ses-*'));
-    nSes = numel(SubSes);
+    nSes = size(SubSes, 1);
     T = table('Size', [nSes, 4], 'VariableTypes', {'cellstr', 'cellstr', 'datetime', 'cellstr'}, ...
         'VariableNames', {'Subject', 'Session', 'Date', 'ScansFile'});
 
-    T.Session = replace({SubSes.name}, 'ses-', '');
-    T.Subject = replace(replace({SubSes.folder}, [BidsFolder, filesep], ''), 'sub-', '');
+    T.Session = replace({SubSes.name}', 'ses-', '');
+    T.Subject = replace(replace({SubSes.folder}', [BidsFolder, filesep], ''), 'sub-', '');
     
     % Get session dates.
     for iSes = 1:nSes

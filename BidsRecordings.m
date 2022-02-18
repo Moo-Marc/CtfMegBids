@@ -1,12 +1,13 @@
-function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
+function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
     % Find MEG recordings and extract their metadata from a CTF MEG BIDS dataset.
     %
-    % [Recordings, Dataset] = BidsRecordings(BidsFolder)
+    % [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder)
     %
     % The returned Recordings and optionally Dataset structures contains all
     % BIDS metadata.  If the provided BidsFolder is not the root BIDS folder,
     % only recordings found under the provided folder will be listed.  However,
-    % if it is not a subfolder of a BIDS dataset, an error is returned.
+    % if it is not a subfolder of a BIDS dataset, an error is returned. The
+    % returned BidsFolder is the root BIDS folder.
     %
     % If NoiseFirst is true, empty room noise recordings will be listed first. This
     % is used for associating noise recordings in other functions.
@@ -28,7 +29,7 @@ function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
     % Find root BIDS folder.
     DataDescripFile = fullfile(BidsFolder, 'dataset_description.json');
     while ~exist(DataDescripFile, 'file')
-        if isempty(BidsFolder)
+        if isempty(BidsFolder) || strcmp(BidsFolder, filesep)
             error('BIDS root folder not found: missing dataset_description.json');
         end
         % Go up to parent directory.
@@ -41,6 +42,7 @@ function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
         
     if nR > 0
         % Pre-allocate, as a column.
+        % Structures are *not* empty (only no fields) on purpose, so we can add fields.
         Recordings(nR,1) = struct('Name', '', 'Folder', '', 'Subject', '', 'Session', '', ...
             'Task', '', 'Acq', '', 'Run', '', 'isNoise', [], 'Scan', table(), ...
             'Meg', struct(), 'CoordSystem', struct(), 'Channels', table(), 'Events', table(), ...
@@ -98,6 +100,7 @@ function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
         ScansFile = fullfile(BidsFolder, ['sub-', Recordings(r).Subject], ['ses-', Recordings(r).Session], ...
             ['sub-', Recordings(r).Subject, '_ses-', Recordings(r).Session, '_scans.tsv']);
         if ~exist(ScansFile, 'file') 
+            Recordings(r).Files.Scans = '';
             if Verbose
                 warning('Missing scans.tsv file: %s', ScansFile);
             end
@@ -123,14 +126,15 @@ function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
         % Get metadata from _meg.json file.
         MegFile = fullfile(RecPath, [RecName, '.json']);
         if ~exist(MegFile, 'file') 
+            Recordings(r).Files.Meg = '';
             if Verbose
                 warning('Missing meg.json file: %s', MegFile);
             end
         else
+            Recordings(r).Files.Meg = MegFile;
             Fid = fopen(MegFile);
             Recordings(r).Meg = jsondecode(fread(Fid, '*char')');
             fclose(Fid);
-            Recordings(r).Files.Meg = MegFile;
         end
         
         % Get metadata from _coordsystem.json file.
@@ -142,41 +146,46 @@ function [Recordings, Dataset] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
             CoordFile = fullfile(RecPath, [RecName(1:end-3), 'coordsystem.json']);
         end
         if ~exist(CoordFile, 'file')
+            Recordings(r).Files.CoordSystem = '';
             if Verbose && ~Recordings(r).isNoise
                 % Optional file so inform but not a warning.
                 fprintf('Missing coordsystem file: %s\n', CoordFile1);
             end
         else
+            Recordings(r).Files.CoordSystem = CoordFile;
             Fid = fopen(CoordFile);
             Recordings(r).CoordSystem = jsondecode(fread(Fid, '*char')');
             fclose(Fid);
-            Recordings(r).Files.CoordSystem = CoordFile;
         end
         
         % Get metadata from _channels.tsv file.
         ChannelFile = fullfile(RecPath, [RecName(1:end-3), 'channels.tsv']);
         if ~exist(ChannelFile, 'file') 
+            Recordings(r).Files.Channels = '';
             if Verbose
                 % Optional file so inform but not a warning.
                 fprintf('Missing channels file: %s\n', ChannelFile);
             end
         else
+            Recordings(r).Files.Channels = ChannelFile;
             Recordings(r).Channels = readtable(ChannelFile, ...
                 'FileType', 'text', 'Delimiter', '\t', 'ReadVariableNames', true);
-            Recordings(r).Files.Channels = ChannelFile;
         end
 
         % Get metadata from _events.tsv file.
         EventsFile = fullfile(RecPath, [RecName(1:end-3), 'events.tsv']);
         if ~exist(EventsFile, 'file') 
+            Recordings(r).Files.Events = '';
+            Recordings(r).Events = table('Size', [0, 5], 'VariableTypes', {'double', 'double', 'double', 'double', 'string'}, ...
+                'VariableNames', {'onset', 'duration', 'ds_trial', 'sample', 'value'});
             if Verbose
                 % Optional file so inform but not a warning.
                 fprintf('Missing events file: %s\n', EventsFile);
             end
         else
+            Recordings(r).Files.Events = EventsFile;
             Recordings(r).Events = readtable(EventsFile, ...
                 'FileType', 'text', 'Delimiter', '\t', 'ReadVariableNames', true);
-            Recordings(r).Files.Events = EventsFile;
         end
         
     end % recording loop

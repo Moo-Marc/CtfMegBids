@@ -18,7 +18,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
 % iLog: File ID of log file already open for writing, or output to Matlab command
 % window (iLog=1, default).
 %
-% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2021-05-18
+% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2022-02-08
     
     if nargin < 6 || isempty(iLog)
         iLog = 1;
@@ -195,14 +195,14 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         % Required
         J.TaskName = BidsInfo.Task; % Must match filename task label. Resting state must start with 'rest'.
         % Should be present
-        J.InstitutionName = 'McConnell Brain Imaging Centre, McGill University';
+        J.InstitutionName = 'McConnell Brain Imaging Center, Montreal Neurological Institute-Hospital, McGill University';
         J.InstitutionAddress = '3801 University St., Montreal, QC, Canada';
         J.Manufacturer = 'CTF';
         J.ManufacturersModelName = 'CTF-275';
         if ~isempty(InfoDs)
             J.SoftwareVersions = InfoDs.DATASET_INFO.DATASET_COLLECTIONSOFTWARE;
         end
-        if ~contains(RecName, 'emptyroom')
+        if isNoise
             J.TaskDescription = 'Empty-room (no subject) noise recording.';
             %J.Instructions = 'n/a';
             %J.CogAtlasID = ''; % Validator complains if empty.
@@ -234,18 +234,26 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         end
         DigitizedHeadPoints = ~isempty(PosFile) && nHeadPoints > 1;
         J.DigitizedHeadPoints = DigitizedHeadPoints;
-        DigitizedLandmarks = ~isempty(iAnatomical) && ~isempty(iHeadCoils); % ~isempty(PosFile) &&
+        % "Whether anatomical landmark points (fiducials) are contained within this recording."
+        % I interpret that to include head coils.
+        DigitizedLandmarks = ~isempty(iAnatomical) || ~isempty(iHeadCoils); % ~isempty(PosFile) &&
         J.DigitizedLandmarks = DigitizedLandmarks;
         % Should be present
         J.MEGChannelCount = sum(ismember([Res4.SensorRes.sensorTypeIndex], 4:7));
         J.MEGREFChannelCount = sum(ismember([Res4.SensorRes.sensorTypeIndex], 0:3));
-        EEGChannelCount = sum([Res4.SensorRes.sensorTypeIndex] == 9);
-        J.EEGChannelCount = EEGChannelCount;
+        isEEG = [Res4.SensorRes.sensorTypeIndex] == 9;
+        EEGChannelCount = sum(isEEG);
         J.ECOGChannelCount = 0;
         J.SEEGChannelCount = 0;
-        J.EOGChannelCount = sum(contains(Res4.channel_names, 'EOG'));
-        J.ECGChannelCount = sum(contains(Res4.channel_names, 'ECG'));
-        J.EMGChannelCount = sum(contains(Res4.channel_names, 'EMG'));
+        % Subtract other types from EEG count, though they should be different index type.
+        isEOG = contains(Res4.channel_names, 'EOG');
+        J.EOGChannelCount = sum(isEOG);
+        isECG = contains(Res4.channel_names, 'ECG');
+        J.ECGChannelCount = sum(isECG);
+        isEMG = contains(Res4.channel_names, 'EMG');
+        J.EMGChannelCount = sum(isEMG);
+        EEGChannelCount = EEGChannelCount - sum(isEEG & (isEMG | isECG | isEOG));
+        J.EEGChannelCount = EEGChannelCount;
         if J.EOGChannelCount + J.ECGChannelCount < 3 && ...
                 sum([Res4.SensorRes.sensorTypeIndex] == 21) - J.EMGChannelCount == 3
             % Channels probably not renamed but present.
@@ -276,10 +284,10 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         end
         if ~isempty(Artefact)
             J.SubjectArtefactDescription = Artefact;
-        elseif ~contains(RecName, 'emptyroom') % Don't include this field empty for noise recording.
+        elseif ~isNoise % Don't include this field empty for noise recording.
             J.SubjectArtefactDescription = '';
         end
-        if ~contains(RecName, 'emptyroom') && ~isempty(Noise)
+        if ~isNoise && ~isempty(Noise)
             J.AssociatedEmptyRoom = Noise;
         end
         J.HardwareFilters.Antialiasing.Type = 'Low pass';
@@ -319,7 +327,8 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     % sub-<label>[_ses-<label>][_acq-<label>]_coordsystem.json
     CoordFile = fullfile(RecPath, ['sub-', BidsInfo.Subject, '_ses-', BidsInfo.Session, '_coordsystem.json']);
     
-    if ~exist(CoordFile, 'file') || Overwrite || Output
+    % The one thing that can change between runs is the presence of EEG channels.
+    if ~exist(CoordFile, 'file') || Overwrite || Output || EEGChannelCount > 0
         J = struct();
         System = 'CTF';
         Units = 'cm';
@@ -342,40 +351,42 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         if DigitizedLandmarks
             % We say the coordinates are in cm, so convert them to cm.
             % Round to micro-m
-            J.AnatomicalLandmarkCoordinates = struct( ...
-                'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
-                'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
-                'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
-            J.AnatomicalLandmarkCoordinateSystem = System;
-            J.AnatomicalLandmarkCoordinateUnits = Units;
-            J.AnatomicalLandmarkCoordinateSystemDescription = Description;
-            J.HeadCoilCoordinates = struct( ...
-                'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-N')), 2)', 4), ...
-                'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-L')), 2)', 4), ...
-                'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-R')), 2)', 4) );
-            J.HeadCoilCoordinateSystem = System;
-            J.HeadCoilCoordinateUnits = Units;
-            J.HeadCoilCoordinateSystemDescription = Description;
-            % Don't assume head coil positioning if more than a few EEG channels.
-            if EEGChannelCount > 10
-                J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils, usually placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
-            else
-                J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils are placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR).';
-            end
-        elseif isempty(iHeadCoils) && ~isempty(iAnatomical) % ~isempty(PosFile) &&
-            % Assume that if only one set of markers were digitized, they are
-            % the head coils.
-            J.HeadCoilCoordinates = struct( ...
-                'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
-                'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
-                'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
-            J.HeadCoilCoordinateSystem = System;
-            J.HeadCoilCoordinateUnits = Units;
-            J.HeadCoilCoordinateSystemDescription = Description;
-            if EEGChannelCount > 10
-                J.FiducialsDescription = 'The head coils, usually placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
-            else
-                J.FiducialsDescription = 'The head coils are placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR).';
+            if ~isempty(iHeadCoils)
+                J.AnatomicalLandmarkCoordinates = struct( ...
+                    'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
+                    'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
+                    'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
+                J.AnatomicalLandmarkCoordinateSystem = System;
+                J.AnatomicalLandmarkCoordinateUnits = Units;
+                J.AnatomicalLandmarkCoordinateSystemDescription = Description;
+                J.HeadCoilCoordinates = struct( ...
+                    'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-N')), 2)', 4), ...
+                    'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-L')), 2)', 4), ...
+                    'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-R')), 2)', 4) );
+                J.HeadCoilCoordinateSystem = System;
+                J.HeadCoilCoordinateUnits = Units;
+                J.HeadCoilCoordinateSystemDescription = Description;
+                % Don't assume head coil positioning if more than a few EEG channels.
+                if EEGChannelCount > 10
+                    J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils, usually placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
+                else
+                    J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils are placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR).';
+                end
+            else %if isempty(iHeadCoils) && ~isempty(iAnatomical)
+                % Assume that if only one set of markers were digitized, they are
+                % the head coils.
+                J.HeadCoilCoordinates = struct( ...
+                    'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
+                    'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
+                    'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
+                J.HeadCoilCoordinateSystem = System;
+                J.HeadCoilCoordinateUnits = Units;
+                J.HeadCoilCoordinateSystemDescription = Description;
+                if EEGChannelCount > 10
+                    J.FiducialsDescription = 'The head coils, usually placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
+                else
+                    J.FiducialsDescription = 'The head coils are placed above the nasion on the forehead (coilN) and near the real pre-auricular points (coilL and coilR).';
+                end
             end
         end
         

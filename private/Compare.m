@@ -10,10 +10,14 @@ function Message = Compare(Old, New, Field) %, TableToScalar
     if nargin < 3 || isempty(Field)
         Field = '(root)';
     end
+    if nargin < 2
+        error('Missing inputs.');
+    end
     OutFormat = '    %s: %s -> %s\n';
     Message = {};
     if ~strcmp(class(Old), class(New))
-        Message = {sprintf(OutFormat, Field, AutoSprintf(Old), AutoSprintf(New))}; % May not show the class change...
+        Message = {sprintf(OutFormat, Field, class(Old), class(New))}; % May not show the class change...        
+        %Message = {sprintf(OutFormat, Field, AutoSprintf(Old), AutoSprintf(New))}; % May not show the class change...
         return;
     end
     switch class(New)
@@ -36,6 +40,10 @@ function Message = Compare(Old, New, Field) %, TableToScalar
                 CellNames = arrayfun(@(x)sprintf('CellColumn%d',x), 1:size(New, 2), 'UniformOutput', false);
                 Message = Compare(cell2struct(Old, CellNames, 2), cell2struct(New, CellNames, 2), Field);
             end
+        case 'string' % string array
+            if any(setdiff(size(Old), 1) ~= setdiff(size(New), 1)) || ~isempty(setxor(Old(:), New(:)))
+                Message = {sprintf(OutFormat, Field, AutoSprintf(Old), AutoSprintf(New))};
+            end
         case 'struct'
             if any(setdiff(size(Old), [0,1]) ~= setdiff(size(New), [0,1]))
                 % Just give overview of size difference.
@@ -43,7 +51,7 @@ function Message = Compare(Old, New, Field) %, TableToScalar
             elseif numel(New) > 1
                 if isempty(Old)
                     for s = 1:numel(New)
-                        Message = [Message, Compare([], New(s), sprintf('%s(%d)', Field, s))];
+                        Message = [Message, Compare([], New(s), sprintf('%s(%d)', Field, s))]; %#ok<*AGROW>
                     end
                 else
                     for s = 1:numel(New)
@@ -53,10 +61,14 @@ function Message = Compare(Old, New, Field) %, TableToScalar
             else
                 for Field = fieldnames(New)'
                     Field = Field{1}; %#ok<FXSET>
-                    if ~isfield(Old, Field) || isempty(Old)
+                    % We can't pass s.(Field) if s is empty struct, it gives no argument, not [].
+                    if ~isfield(Old, Field) || (~isempty(New) && isempty(Old))
                         Message{end+1} = sprintf(OutFormat, Field, '(none)', AutoSprintf(New.(Field)));
-                    else
+                    elseif isempty(New) && ~isempty(Old)
+                        Message{end+1} = sprintf(OutFormat, Field, AutoSprintf(Old.(Field)), '(none)');
+                    elseif ~isempty(New) % && ~isempty(Old)
                         Message = [Message, Compare(Old.(Field), New.(Field), Field)];
+                    % else both are empty, do nothing
                     end
                 end
             end

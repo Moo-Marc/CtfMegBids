@@ -1,6 +1,6 @@
 function J = StructOverwrite(J, NewJ)
     % Does not recurse through levels, only copies first level.
-    % See also BidsRebuildAllFiles.m, UpdateStruct subfunction, which is recursive.
+    % See also UpdateStruct function, which is recursive.
     if isempty(NewJ)
         % Nothing to copy.
         return;

@@ -22,6 +22,8 @@ function Str = AutoSprintf(Var)
             else
                 Str = sprintf('(non-string cell %s)', AutoSprintf(size(Var)));
             end
+        case 'string'
+            Str = join(Var);
         otherwise
             Str = sprintf('(%s %s)', class(Var), AutoSprintf(size(Var)));
     end

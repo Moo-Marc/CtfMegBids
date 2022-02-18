@@ -280,16 +280,3 @@ function MegToBids(AcqDateFolder, Destination, UseSubEmptyroom, SaveLog, StudyNa
     
 end
 
-
-% % BIC intake subject ID: <Study(8)><Subject(4)><Session(2-8)>
-% iStudyID = 1:8;   % first 8 characters
-% iSubjID = 9:12;   % next 4 numbers
-% iSessID = 13;     % last 2-8 characters
-% MinIntakeIDLength = 14; %STUDYAAA0001V1 8+4+2
-% % Check for "intake" format.
-% if length(BidsInfo.Subject) >= MinIntakeIDLength && ...
-%         all(ismember(BidsInfo.Subject(iSubjID), '0123456789'))
-%     BidsInfo.Study = strrep(BidsInfo.Subject(iStudyID), '-', '');
-%     BidsInfo.Session = strrep(BidsInfo.Subject(iSessID:end), '-', '');
-%     BidsInfo.Subject = strrep(BidsInfo.Subject(iSubjID), '-', '');
-% else

@@ -51,7 +51,8 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
     
     for iSes = 1:nT
         if iSes > 1 && strcmp(T.Subject{iSes}, T.Subject(iSes-1))
-            if all(ymd(T.Date(iSes)) == ymd(T.Date(iSes-1)))
+            if year(T.Date(iSes)) == year(T.Date(iSes-1)) && month(T.Date(iSes)) == month(T.Date(iSes-1)) && ...
+                    day(T.Date(iSes)) == day(T.Date(iSes-1))
                 % Merge within session, merge _scans.tsv files (and sort).
                 % Saved into the source file, which will overwrite the destination file when moving.
                 if T.isDest(iSes)
@@ -124,8 +125,31 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
 
     function Scans = MergeScansFile(SaveFile, AddFile)
         % Read two BIDS _scans.tsv files and merge them, save into the first one.
+        % Also checks for wrong variables.
         SourceScans = ReadScans(SaveFile);
+        Vars = SourceScans.Properties.VariableNames;
+        if ~isequal(Vars, {'filename', 'acq_time'})
+            if ismember({'filename', 'acq_time'}, Vars)
+                SourceScans = SourceScans(:, {'filename', 'acq_time'});
+                if numel(Vars) > 2
+                    fprintf('Extra columns in scans table ignored: %s\n', SaveFile);
+                end
+            else
+                error('Unexpected scans table variables: %s', SaveFile);
+            end
+        end
         DestScans = ReadScans(AddFile);
+        Vars = DestScans.Properties.VariableNames;
+        if ~isequal(Vars, {'filename', 'acq_time'})
+            if ismember({'filename', 'acq_time'}, Vars)
+                DestScans = DestScans(:, {'filename', 'acq_time'});
+                if numel(Vars) > 2
+                    fprintf('Extra columns in scans table ignored: %s\n', AddFile);
+                end
+            else
+                error('Unexpected scans table variables: %s', AddFile);
+            end
+        end
         Scans = union(SourceScans, DestScans);
         % Sort in chronological order, not required but simplifies comparisons.
         Scans = sortrows(Scans, {'acq_time', 'filename'});

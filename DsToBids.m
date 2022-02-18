@@ -19,7 +19,7 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
     %   the raw recording, like session logs and pictures.  If empty, they 
     %   will be stored in the BIDS meg folder,
     %   <Destination>/sub-xxxx/ses-xxxx/meg, with the recording.  Otherwise,
-    %   <ExtrasFolder>/sub-xxxx/ses-xxxx/extras.
+    %   <ExtrasFolder>/sub-xxxx/ses-xxxx/meg.
     %   iLog: Matlab file id of a log file where to output messages instead of screen.
     %
     % Output:
@@ -52,11 +52,18 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
     end
     if ~all(isfield(BidsInfo, {'Subject', 'Session', 'Task'}))
         error('Missing BIDS info.');
-    end
+    end        
     
+    if ismember(Recording(end), {'/', '\'})
+        Recording(end) = '';
+    end
     [DsFolder, DsName, DsExt] = fileparts(Recording);
     if ~strcmpi(DsExt, '.ds')
         error('CTF recording expected.');
+    end
+    if isempty(Destination)
+        % In case of partial conversion / previous errors.
+        Destination = DsFolder;
     end
     [DsSubject, DsNameRem] = strtok(DsName, '_');
     % If already BIDS format, all files will start with sub-xxxx_ses-xxxx.
@@ -99,7 +106,7 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
         ExtrasFolder = NewFolder;
     else
         ExtrasFolder = fullfile(ExtrasFolder, ['sub-', BidsInfo.Subject], ...
-            ['ses-', BidsInfo.Session], 'extras');
+            ['ses-', BidsInfo.Session], 'meg');
     end
     
     NewName = ['sub-', BidsInfo.Subject, '_ses-', BidsInfo.Session, '_task-', BidsInfo.Task];

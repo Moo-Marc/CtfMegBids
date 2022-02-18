@@ -1,6 +1,6 @@
 function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         BidsFolder, BidsInfo, BidsDsInfo, KeepFields, Verbose, SaveFiles, ...
-        RemoveEmptyFields, RenameFiles, IgnoreInfoMismatch, Validate)
+        RemoveEmptyFields, RenameFiles, IgnoreInfoMismatch, ContinueFrom, Validate)
     % Rebuild all BIDS metadata files for a CTF MEG dataset (not anatomy yet).
     %
     % BidsFolder must be the root study folder, not a subject or session
@@ -38,6 +38,10 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     % If IgnoreInfoMismatch is true, missing or extra recordings provided in
     % BidsInfo are ignored. 
     %
+    % ContinueFrom can be a subject index, a subject name (without "sub-") or
+    % "Scans".  This last option skips all recordings and only rebuilds the
+    % scans.tsv files based on current recordings.
+    %
     % If Validate is true, attempts to run the (external) BIDS validator after
     % running. [needs to be installed and a script path is currently hard coded]
     %
@@ -45,13 +49,15 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     % there are any events in the dataset. Custom column descriptions can be
     % given in the BidsDsInfo.Events field.
     %
-    % Marc Lalancette, 2019 - 2021-10-04
+    % Marc Lalancette, 2019 - 2022-02-08
     
-    %% TODO: Keep existing (e.g. anatomical) entries in scans.tsv!
     % TODO: Make work if there are missing files.  Probably Verbose fails.
     
-    if nargin < 10 || isempty(Validate)
+    if nargin < 11 || isempty(Validate)
         Validate = false;
+    end
+    if nargin < 10 || isempty(ContinueFrom)
+        ContinueFrom = 1;
     end
     if nargin < 9 || isempty(IgnoreInfoMismatch)
         IgnoreInfoMismatch = false;
@@ -69,13 +75,13 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         Verbose = false;
     end
     if nargin < 4 || isempty(KeepFields)
-        KeepFields = struct();
+        KeepFields = struct([]);
     end
     if nargin < 3 || isempty(BidsDsInfo)
-        BidsDsInfo = struct();
+        BidsDsInfo = struct([]);
     end
     if nargin < 2 || isempty(BidsInfo)
-        BidsInfo = struct();
+        BidsInfo = struct([]);
     elseif ~isfield(BidsInfo, 'Name') && any(~isfield(BidsInfo, {'Subject', 'Session', 'Task'}))
         error('BidsInfo should include either Name or at least (Subject, Session, Task) fields to match existing recordings.');
     end
@@ -97,22 +103,66 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     end
     
     % First get the old metadata. Returns noise recordings first, which is
-    % needed here to regenerate the noise scans.tsv before other
-    % recordings (for noise matching).
+    % needed here to regenerate the noise scans.tsv before other recordings (for
+    % noise matching).
+    
+    % Important: only the root level of a struct array must have the same
+    % fields, but not the same types (thus not the same subfields). So some
+    % subfields may be missing (correctly) if not present in some files, e.g.
+    % Recording.Meg.AssociatedEmptyRoom.
     [OldRecordings, Dataset] = BidsRecordings(BidsFolder, false, true); % not Verbose, NoiseFirst
     nR = numel(OldRecordings);
+    
+    if ~isempty(ContinueFrom)
+        if isnumeric(ContinueFrom)
+            iStart = ContinueFrom;
+        elseif ischar(ContinueFrom)
+            if strcmpi(ContinueFrom, 'scans')
+                iStart = inf;
+            else
+                Subjects = cellfun(@(s)s.Subject, OldRecordings, 'UniformOutput', false);
+                iStart = find(strcmp(Subjects, ContinueFrom), 1);
+                if isempty(iStart)
+                    error('ContinueFrom not found.');
+                end
+            end
+        else
+            error('ContinueFrom should be subject name (without sub-) or recording index.');
+        end
+    else
+        iStart = 1;
+    end
+
     
     % --------------------------------------------------------
     % Recordings   
     % Copy some fields from existing metadata files. We must keep BIDS entities that
     % constitute folder and possibly file names since folders are not renamed here
     % and files are also not by default.
-    KeepRecordings = struct();
+    if Verbose
+        fprintf('\nFound %d recordings under %s.\n\n', nR, BidsFolder);
+    end
+    if iStart > nR
+        Recordings = OldRecordings;
+    else
+    KeepRecordings = struct([]);
     FileNameEntities = {'Folder', 'Name', 'Subject', 'Session', 'Task', 'Acq', 'Run'};
     Fields = unique([fieldnames(KeepFields), FileNameEntities]);
     for f = 1:numel(Fields)
         if isfield(OldRecordings, Fields{f})
-            [KeepRecordings(1:nR).(Fields{f})] = OldRecordings.(Fields{f});
+            if ismember(Fields{f}, {'Meg', 'Coordys'}) && isstruct(KeepFields.(Fields{f}))
+                SubFields = fieldnames(KeepFields.(Fields{f}));
+                for iSubF = 1:numel(SubFields)
+                    % Can't copy in one go with subfields: they aren't consistent.
+                    for r = nR:-1:1
+                        if isfield(OldRecordings(r).(Fields{f}), SubFields{iSubF})
+                            KeepRecordings(r).(Fields{f}).(SubFields{iSubF}) = OldRecordings(r).(Fields{f}).(SubFields{iSubF});
+                        end
+                    end
+                end
+            else
+                [KeepRecordings(1:nR).(Fields{f})] = OldRecordings.(Fields{f});
+            end
         end
     end
     if RenameFiles
@@ -123,13 +173,14 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         Fields = setdiff(fieldnames(BidsInfo), FileNameEntities);
     end
     
-    RestSynonyms = {'Spontaneous', 'Restingstate', 'Baselinerest', 'Resting', 'Rest', ...
-        'spontaneous', 'restingstate', 'baselinerest', 'resting', 'rest'};
+    % Order matters here: longer strings should come before substrings, e.g.
+    % 'resting' before 'rest'.
+    RestSynonyms = {'spontaneous', 'restingstate', 'baselineresting', 'baselinerest', 'restbaseline', 'resting', 'rest'};
     % Add or replace some info if provided.
     if ~isempty(BidsInfo) || RenameFiles
         nMatch = 0;
         nInfo = numel(BidsInfo);
-        for r = 1:nR
+        for r = iStart:nR
             % Find matching new info.
             iInfo = 0;
             for q = 1:nInfo
@@ -151,7 +202,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
             end
             if iInfo
                 if Verbose
-                    Message{end+1} = sprintf('Manual changes, %s\n', OldRecordings(r).Name);
+                    Message{end+1} = sprintf('Manual changes, %s\n', OldRecordings(r).Name); %#ok<*AGROW>
                     fprintf(Message{end});
                 end
                 for f = 1:numel(Fields)
@@ -176,7 +227,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
                     ~strcmp(KeepRecordings(r).Task, 'noise')
                 if RenameFiles
                     if Verbose
-                        Message{end+1} = sprintf('Automatic noise renaming: %s -> %s\n', KeepRecordings(r).Task, 'noise');
+                        Message{end+1} = sprintf('Automatic noise renaming: %s -> %s, %s\n', KeepRecordings(r).Task, 'noise', KeepRecordings(r).Name);
                         fprintf(Message{end});
                     end
                     KeepRecordings(r).Task = 'noise';
@@ -189,16 +240,25 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
             end
             % Check rest task name
             if contains(KeepRecordings(r).Task, RestSynonyms, 'IgnoreCase', true) && ...
-                    ~strncmp(KeepRecordings(r).Task, RestSynonyms{end}, numel(RestSynonyms{end}))
+                    ~strcmp(KeepRecordings(r).Task, RestSynonyms{end})
                 if RenameFiles
+                    if Verbose
+                        OldRestName = KeepRecordings(r).Task;
+                    end
                     % Standardize resting state task names.  BIDS prescribes: "(for resting state use the rest prefix)"
                     if contains(KeepRecordings(r).Task, RestSynonyms, 'IgnoreCase', true)
-                        for iSyn = 1:numel(RestSynonyms)-1
+                        for iSyn = 1:numel(RestSynonyms)
                             KeepRecordings(r).Task = strrep(KeepRecordings(r).Task, RestSynonyms{iSyn}, '');
                         end
                         KeepRecordings(r).Task = [RestSynonyms{end}, KeepRecordings(r).Task];
                     end
-                    Rename = true;
+                    if ~strcmp(KeepRecordings(r).Task, OldRestName)
+                        Rename = true;
+                        if Verbose
+                            Message{end+1} = sprintf('Automatic rest renaming: %s -> %s, %s\n', OldRestName, KeepRecordings(r).Task, KeepRecordings(r).Name);
+                            fprintf(Message{end});
+                        end
+                    end
                 else
                     % Warn even if not Verbose
                     Message{end+1} = sprintf('Warning: Likely non-standard resting state recording task name, should start with ''rest'': %s', KeepRecordings(r).Name);
@@ -218,17 +278,23 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
                 end
             end
             if Rename
+                % Only file names are changed, not folders (not sub- or ses-).
                 KeepRecordings(r).Name = BidsBuildRecordingName(KeepRecordings(r));
-                % Rename CTF dataset (including files)
-                Bids_ctf_rename_ds(fullfile(OldRecordings(r).Folder, OldRecordings(r).Name), ...
-                    fullfile(KeepRecordings(r).Folder, KeepRecordings(r).Name));
-                % Rename sidecar files
-                OrigName = OldRecordings(r).Name(1:end-6);
-                NewName = KeepRecordings(r).Name(1:end-6);
-                Files = dir(fullfile(OldRecordings(r).Folder, [OrigName, '*']));
-                for iFile = 1:length(Files)
-                    movefile(fullfile(OldRecordings(r).Folder, Files(iFile).name), ...
-                        fullfile(KeepRecordings(r).Folder, strrep(Files(iFile).name, OrigName, NewName)));
+                if SaveFiles
+                    % Rename CTF dataset (including files)
+                    Bids_ctf_rename_ds(fullfile(BidsFolder, OldRecordings(r).Folder, OldRecordings(r).Name), ...
+                        fullfile(BidsFolder, KeepRecordings(r).Folder, KeepRecordings(r).Name));
+                    % Rename sidecar files
+                    OrigName = OldRecordings(r).Name(1:end-6);
+                    NewName = KeepRecordings(r).Name(1:end-6);
+                    Files = dir(fullfile(BidsFolder, OldRecordings(r).Folder, [OrigName, '*']));
+                    for iFile = 1:length(Files)
+                        [isOk, Message] = movefile(fullfile(BidsFolder, OldRecordings(r).Folder, Files(iFile).name), ...
+                            fullfile(BidsFolder, KeepRecordings(r).Folder, strrep(Files(iFile).name, OrigName, NewName)));
+                        if ~isOk
+                            error(Message);
+                        end
+                    end
                 end
             end
             
@@ -245,18 +311,24 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     %     Recordings(nR) = struct('Name', '', 'Folder', '', 'Subject', '', 'Session', '', ...
     %         'Task', '', 'Acq', '', 'Run', '', 'Scan', struct('AcqDate', datetime()), ...
     %         'Meg', struct(), 'CoordSystem', struct(), 'Channels', table(), 'Files', struct());
-    %     Recordings(nR) = struct('Subject', '', 'Session', '', 'Task', '', ...
-    %         'Meg', struct(), 'CoordSystem', struct(), 'Channels', table(), 'Files', struct());
-    for r = 1:nR 
-        Recording = fullfile(BidsFolder, OldRecordings(r).Folder, OldRecordings(r).Name);
-        if Verbose
-            fprintf('Processing recording %d: %s.\n', r, Recording);
+    
+    for r = iStart:nR
+        if ~SaveFiles
+            % Files not actually renamed so use original.
+            Recording = fullfile(BidsFolder, OldRecordings(r).Folder, OldRecordings(r).Name);
+        else
+            Recording = fullfile(BidsFolder, KeepRecordings(r).Folder, KeepRecordings(r).Name);
         end
-        TempRec = BidsBuildRecordingFiles(Recording, KeepRecordings(r), Overwrite, SaveFiles, RemoveEmptyFields, RenameFiles); 
-            % need temp struct here because fields are added and struct array assignment needs same fields.
-            % Overwrite for recordings applies at the file level.
-        Recordings(r) = BidsBuildSessionFiles(Recording, TempRec, Overwrite, SaveFiles); 
-            % Overwrite for session does not replace the file, but the entry.
+        if Verbose
+            fprintf('Processing recording %d: %s.\n', r, OldRecordings(r).Name);
+        end
+        % Need temp struct here because fields are added and struct array assignment needs same fields.
+        % Overwrite for recordings applies at the file level.
+        TempRec = BidsBuildRecordingFiles(Recording, KeepRecordings(r), Overwrite, SaveFiles, RemoveEmptyFields);
+        % Overwrite for session does not replace the file, but the entry.
+        % If renamed above, this will add instead of rename, but the extra
+        % entries are removed below.
+        Recordings(r) = BidsBuildSessionFiles(Recording, TempRec, Overwrite, SaveFiles);
         if r == 1
             % Initialize full structure.
             Recordings(nR) = Recordings(1);
@@ -271,28 +343,6 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
                     fprintf(Message{end});
                 end
             end
-            % Compare now takes care of everything including Scan
-            %             % Scan
-            %             if isempty(OldRecordings(r).Files.Scans)
-            %                 Message{end+1} = sprintf('    %s: %s -> %s\n', 'Scans file', '(none)', Recordings(r).Files.Scans);
-            %                 fprintf(Message{end});
-            %             elseif ~strcmp(OldRecordings(r).Files.Scans, Recordings(r).Files.Scans)
-            %                 Message{end+1} = sprintf('    %s: %s -> %s\n', 'Scans file', OldRecordings(r).Files.Scans, Recordings(r).Files.Scans);
-            %                 fprintf(Message{end});
-            %             end
-            %             if isempty(OldRecordings(r).Scan.filename{1})
-            %                 Message{end+1} = sprintf('    %s: %s -> %s\n', 'filename', '(none)', Recordings(r).Scan.filename{1});
-            %                 fprintf(Message{end});
-            %             else
-            %                 if ~strcmp(OldRecordings(r).Scan.filename{1}, Recordings(r).Scan.filename{1})
-            %                     Message{end+1} = sprintf('    %s: %s -> %s\n', 'filename', OldRecordings(r).Scan.filename{1}, Recordings(r).Scan.filename{1});
-            %                     fprintf(Message{end});
-            %                 end
-            %                 if ~isequal(OldRecordings(r).Scan.acq_time(1), Recordings(r).Scan.acq_time(1))
-            %                     Message{end+1} = sprintf('    %s: %s -> %s\n', 'acq_time', OldRecordings(r).Scan.acq_time(1), Recordings(r).Scan.acq_time(1));
-            %                     fprintf(Message{end});
-            %                 end
-            %             end
         end
         
         %         if isfield(OldRecordings(r).Files, CoordSystem) && ~isempty(OldRecordings(r).Files.CoordSystem)
@@ -314,6 +364,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
             end
         end
     end
+    end % skip recordings
     
     % --------------------------------------------------------
     % Scans tables
@@ -325,7 +376,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     % This doesn't work if there are missing ones.  BidsRecordings modified
     % to never be empty.
     Scans = vertcat(Recordings.Scan); 
-    if size(Scans, 1) ~= nR
+    if (iStart <= nR && size(Scans, 1) ~= (nR - iStart + 1)) || (iStart > nR &&  size(Scans, 1) ~= nR)
         error('Unexpected number of scans, maybe BidsBuildSessionFiles problem.');
     end
     ScansFiles = arrayfun(@(x) x.Files.Scans, Recordings, 'UniformOutput', false)';
@@ -337,29 +388,30 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     for f = 1:numel(OldScansFiles)
         OldScansFile = fullfile(OldScansFiles(f).folder, OldScansFiles(f).name);
         if ~ismember(OldScansFile, ScansFiles)
-            if SaveFiles
-                delete(OldScansFile);
-                Message{end+1} = sprintf('Deleting scans file %s\n', OldScansFile);
-                fprintf(Message{end});
-            elseif Verbose
+            % No longer delete, it could be an anatomical session.
+            %             if SaveFiles
+            %                 delete(OldScansFile);
+            %                 Message{end+1} = sprintf('Deleting scans file %s\n', OldScansFile);
+            %                 fprintf(Message{end});
+            %             elseif Verbose
+            if SaveFiles || Verbose
                 Message{end+1} = sprintf('Extra scans file: %s\n', OldScansFile);
                 fprintf(Message{end});
             end
-        else
+        elseif SaveFiles || Verbose
             iScans = find(strcmp(OldScansFile, ScansFiles)); % never empty because ismember.
             OldScans = ReadScans(OldScansFile);
-            % Check for extras or duplicates.  Dates were already updated
-            % and compared above.
-            if SaveFiles && ( numel(OldScans.filename) ~= numel(iScans) || ...
-                    any(~ismember(OldScans.filename, Scans.filename(iScans))) )
-                % Write sorted in chronological order.  This means a file may
-                % get saved without verbose indicating any changes.
+            % Check for extras or duplicates, but take into account non-meg
+            % (anat) scans.  Dates were already updated and compared above.
+            iMeg = strncmp(OldScans.filename, 'meg', 3);
+            TempScans = sortrows([Scans(iScans, :); OldScans(~iMeg, :)], {'acq_time', 'filename'});
+
+            if SaveFiles && ( numel(OldScans.filename(iMeg)) ~= numel(iScans) || ...
+                    any(~ismember(OldScans.filename(iMeg), Scans.filename(iScans))) )
+                % Write sorted in chronological order, include non-meg scans.
                 WriteScans(TempScans, OldScansFile);
             end
             if Verbose
-                % Sort in chronological order for comparison.
-                TempScans = sortrows(Scans(iScans, :), {'acq_time', 'filename'});
-                OldScans.acq_time = StrToDatetime(OldScans.acq_time);
                 NewMessage = Compare(OldScans, TempScans, 'Scans');
                 if ~isempty(NewMessage)
                     Message{end+1} = sprintf('Extra or duplicate scans, %s\n', OldScansFile);
@@ -400,34 +452,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         end
     end
     Dataset = UpdateStruct(Dataset, BidsDsInfo);
-    %     for Field = {'Study', 'License', 'Authors', 'Acknowledgements', ...
-    %             'HowToAcknowledge', 'Funding', 'ReferencesAndLinks', 'DatasetDOI'}
-    %         Field = Field{1}; %#ok<FXSET>
-    %         if isfield(BidsDsInfo, Field)
-    %             if Verbose
-    %                 New = struct();
-    %                 New.(Field) = BidsDsInfo.(Field);
-    %             end
-    %                 && any(Dataset.Dataset.(Field) ~= BidsDsInfo.(Field))
-    %                 Message{end+1} = sprintf(OutFormat, Field, AutoSprintf(Dataset.Dataset.(Field)), AutoSprintf(BidsDsInfo.(Field)));
-    %                 fprintf(Message{end});
-    %             end
-    %             Dataset.Dataset.(Field) = BidsDsInfo.(Field);
-    %         end
-    %     end
-    %     if isfield(BidsDsInfo, 'Ignore')
-    %         if Verbose
-    %             if ~isfield(Dataset, 'Files') || ~isfield(Dataset.Files, 'Ignore')
-    %                 Message{end+1} = sprintf(OutFormat, 'Ignore', '(none)', AutoSprintf(BidsDsInfo.Ignore));
-    %                 fprintf(Message{end});
-    %             elseif ~isempty(setxor(Dataset.Ignore, BidsDsInfo.Ignore))
-    %                 Message{end+1} = sprintf(OutFormat, 'Ignore', AutoSprintf(Dataset.Ignore), AutoSprintf(BidsDsInfo.Ignore));
-    %                 fprintf(Message{end});
-    %             end
-    %         end
-    %         Dataset.Ignore = BidsDsInfo.Ignore;
-    %     end
-    
+
     % Rebuild and compare.
     OldDataset = Dataset;
     Dataset = BidsBuildStudyFiles(BidsFolder, Dataset, Overwrite, SaveFiles, RemoveEmptyFields);
@@ -441,21 +466,6 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
                 fprintf(Message{end});
             end
         end
-        %         for Field = fieldnames(Dataset.Dataset)'
-        %             Field = Field{1}; %#ok<FXSET>
-        %             if any(OldDataset.Dataset.(Field) ~= Dataset.Dataset.(Field))
-        %                 Message{end+1} = sprintf('    %s: %s -> %s\n', Field, OldDataset.Dataset.(Field), Dataset.Dataset.(Field));
-        %                 fprintf(Message{end});
-        %             end
-        %         end
-        %         if isfield(Dataset, 'Files') && isfield(Dataset.Files, 'Ignore') && ...
-        %                 (~isfield(OldDataset, 'Files') || ~isfield(OldDataset.Files, 'Ignore'))
-        %             Message{end+1} = sprintf('    %s: %s -> %s\n', 'Ignore', '(none)', AutoSprintf(Dataset.Ignore));
-        %             fprintf(Message{end});
-        %         elseif ~isempty(setxor(OldDataset.Ignore, Dataset.Ignore))
-        %             Message{end+1} = sprintf('    %s: %s -> %s\n', 'Ignore', AutoSprintf(OldDataset.Ignore), AutoSprintf(Dataset.Ignore));
-        %             fprintf(Message{end});
-        %         end
     end
     
     % Optionally validate with external program.
