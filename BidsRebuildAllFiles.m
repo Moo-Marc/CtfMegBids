@@ -3,8 +3,8 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         RemoveEmptyFields, RenameFiles, IgnoreInfoMismatch, ContinueFrom, Validate)
     % Rebuild all BIDS metadata files for a CTF MEG dataset (not anatomy yet).
     %
-    % BidsFolder must be the root study folder, not a subject or session
-    % for example.
+    % If the provided BidsFolder is not the root BIDS folder, only recordings
+    % found under the provided folder will be edited.
     %
     % Recreates BIDS metadata files from potentially 3 sources.  In order of
     % priority: 
@@ -110,7 +110,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     % fields, but not the same types (thus not the same subfields). So some
     % subfields may be missing (correctly) if not present in some files, e.g.
     % Recording.Meg.AssociatedEmptyRoom.
-    [OldRecordings, Dataset] = BidsRecordings(BidsFolder, false, true); % not Verbose, NoiseFirst
+    [OldRecordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, false, true); % not Verbose, NoiseFirst
     nR = numel(OldRecordings);
     
     if ~isempty(ContinueFrom)
@@ -147,10 +147,10 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     else
     KeepRecordings = struct([]);
     FileNameEntities = {'Folder', 'Name', 'Subject', 'Session', 'Task', 'Acq', 'Run'};
-    Fields = unique([fieldnames(KeepFields), FileNameEntities]);
+    Fields = unique([fieldnames(KeepFields)', FileNameEntities]);
     for f = 1:numel(Fields)
         if isfield(OldRecordings, Fields{f})
-            if ismember(Fields{f}, {'Meg', 'Coordys'}) && isstruct(KeepFields.(Fields{f}))
+            if ismember(Fields{f}, {'Meg', 'CoordSystem'}) && isstruct(KeepFields.(Fields{f}))
                 SubFields = fieldnames(KeepFields.(Fields{f}));
                 for iSubF = 1:numel(SubFields)
                     % Can't copy in one go with subfields: they aren't consistent.
@@ -331,7 +331,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         Recordings(r) = BidsBuildSessionFiles(Recording, TempRec, Overwrite, SaveFiles);
         if r == 1
             % Initialize full structure.
-            Recordings(nR) = Recordings(1);
+            Recordings(nR, 1) = Recordings(1);
         end
         if Verbose
             NewMessage = Compare(OldRecordings(r), Recordings(r), sprintf('Recordings(%d)', r));
@@ -345,8 +345,9 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
             end
         end
         
-        %         if isfield(OldRecordings(r).Files, CoordSystem) && ~isempty(OldRecordings(r).Files.CoordSystem)
-        % Look for additional coordinate files, e.g. with full recording name.        
+        % Look for additional coordinate files, e.g. with full recording name.
+        % But not for noise recordings (or if for some other reason it's missing).
+        if ~isempty(Recordings(r).Files.CoordSystem) 
         CoordFiles = dir(fullfile(BidsFolder, OldRecordings(r).Folder, '*coordsystem.json'));
         if numel(CoordFiles) > 1
             % Should remove extra files.
@@ -363,6 +364,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
                 end
             end
         end
+        end
     end
     end % skip recordings
     
@@ -375,6 +377,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
     % Make a single table with recordings scan info, including the scans.tsv file names.
     % This doesn't work if there are missing ones.  BidsRecordings modified
     % to never be empty.
+    fprintf('\n'); 
     Scans = vertcat(Recordings.Scan); 
     if (iStart <= nR && size(Scans, 1) ~= (nR - iStart + 1)) || (iStart > nR &&  size(Scans, 1) ~= nR)
         error('Unexpected number of scans, maybe BidsBuildSessionFiles problem.');
@@ -409,7 +412,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
             if SaveFiles && ( numel(OldScans.filename(iMeg)) ~= numel(iScans) || ...
                     any(~ismember(OldScans.filename(iMeg), Scans.filename(iScans))) )
                 % Write sorted in chronological order, include non-meg scans.
-                WriteScans(TempScans, OldScansFile);
+                WriteScans(OldScansFile, TempScans);
             end
             if Verbose
                 NewMessage = Compare(OldScans, TempScans, 'Scans');

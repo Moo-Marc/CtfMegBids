@@ -5,6 +5,8 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
     % the same session.  sub-emptyroom sessions are not renamed.
     %
     % Marc Lalancette 2022-01-31
+
+    % TODO: make it possible to re-order sessions.  Now needs all new session names.
     
     if nargin < 4 || isempty(ZeroPad)
         ZeroPad = 2;
@@ -14,7 +16,9 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
     if nargin < 3 || isempty(SortSessions)
         SortSessions = true;
     end
-    if ~exist(Source, 'dir')
+    if isempty(Source) 
+        warning('No source directory, only processing destination.')
+    elseif ~exist(Source, 'dir')
         error('Source directory not found: %s', Source);
     end
     if ~exist(Destination, 'dir')
@@ -47,6 +51,7 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
         isEmptyroom = strcmp(T.Subject, 'emptyroom');
         E = T(isEmptyroom, :);
         T(isEmptyroom, :) = [];
+        nT = size(T, 1);
     end
     
     for iSes = 1:nT
@@ -89,37 +94,37 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
     end
     
     % Save rename table for updating database later.
-    TableFile = fullfile(Destination, sprintf('SessionRenameTableFile_%s.csv', datestr(datetime(), 'yyyy-mm-ddTHHMMSS')));
+    if ~exist(fullfile(Destination, 'derivatives'), 'dir')
+        mkdir(fullfile(Destination, 'derivatives'));
+    end
+    TableFile = fullfile(Destination, 'derivatives', sprintf('SessionRenameTableFile_%s.csv', datestr(datetime(), 'yyyy-mm-ddTHHMMSS')));
     writetable(T, TableFile);
 
     % Prevent overwriting emptyroom sessions without specific time in session name.
     for iSes = 2:numel(E)
         if strcmp(E.OldSes{iSes}, E.OldSes{iSes-1}) && (... % same session name but
-                any(ymd(T.Date(iSes)) ~= ymd(T.Date(iSes-1))) || ~contains(E.OldSes{iSes}, 'T') ) % different dates or name doesn't include time
+                year(T.Date(iSes)) ~= year(T.Date(iSes-1)) || month(T.Date(iSes)) ~= month(T.Date(iSes-1)) || day(T.Date(iSes)) ~= day(T.Date(iSes-1)) || ...
+                ~contains(E.OldSes{iSes}, 'T') ) % different dates or name doesn't include time
             error('Merging would overwrite an emptyroom session witout specific time in session name. %s\nVerify and manually rename first.', ...
                 E.OldSes{iSes});
         end
     end
 
-    % Merge (move source to destination). movefile complains about existing
-    % folders, though it overwrites existing files.  copyfile works.
+    % Merge (move source to destination). movefile complains about existing folders, 
+    % though it overwrites existing files.  copyfile works but wastes time and disk.
     % This includes sub-emptyroom, which was excluded from renaming.
     if ~isempty(dir(fullfile(Source, 'sub-*'))) % or error
-        [IsOk, Message] = copyfile(fullfile(Source, 'sub-*'), Destination, 'f');
-        if ~IsOk
-            error(Message);
-        end
-        rmdir(fullfile(Source, 'sub-*'), 's');
+        [IsOk, Message] = mergefile(fullfile(Source, 'sub-*'), Destination);
+        if ~IsOk, error(Message); end
+        %rmdir(fullfile(Source, 'sub-*'));
     end
     % Also move certain "sub-datasets"
     SubDatasets = {'sourcedata', 'derivatives', 'extras'}; % not .heudiconv
     for iS = 1:numel(SubDatasets)
         if exist(fullfile(Source, SubDatasets{iS}), 'dir')
-            [IsOk, Message] = copyfile(fullfile(Source, [SubDatasets{iS} '*']), Destination, 'f');
-            if ~IsOk
-                error(Message);
-            end
-            rmdir(fullfile(Source, SubDatasets{iS}), 's');
+            [IsOk, Message] = mergefile(fullfile(Source, [SubDatasets{iS} '*']), Destination);
+            if ~IsOk, error(Message); end
+            %rmdir(fullfile(Source, SubDatasets{iS}));
         end
     end
 
@@ -160,3 +165,26 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
 
 end
 
+% Move files and folders recursively without complaining of existing destination folders.
+function [isOk, Message] = mergefile(Source, Destination)
+% List all files and folders, if wildcards were used.
+List = dir(Source);
+for iL = 1:numel(List)
+    if any(strcmp(List(iL).name, {'.', '..'}))
+        continue;
+    end
+    Item = fullfile(List(iL).folder, List(iL).name);
+    Type = exist(Item, 'file');
+    if ~Type % disappeared
+        error('Not found: %s', Item);
+    elseif Type < 7 || ~exist(fullfile(Destination, List(iL).name), 'file') % file or new folder
+        [isOk, Message] = movefile(Item, Destination);
+        if ~isOk, return; end
+    else % folder existing in destination
+        % Recurse.
+        [isOk, Message] = mergefile(fullfile(Item, '*'), fullfile(Destination, List(iL).name));
+        if ~isOk, return; end
+        rmdir(Item);
+    end
+end
+end

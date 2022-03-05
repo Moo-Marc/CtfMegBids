@@ -22,12 +22,13 @@ if nargin < 3 || isempty(iLog)
     iLog = 1; % output messages to command window
 end
 
-    [RecPath, RecName, RecExt] = fileparts(Recording);
+    [RecPathFull, RecName, RecExt] = fileparts(Recording);
     isNoise = contains(RecName, 'emptyroom') || strcmpi(BidsInfo.Task, 'noise');
 
     % Find associated noise recording in BIDS dataset.
-    iRelativePath = strfind(RecPath, [filesep, 'sub-']);
-    BidsFolder = RecPath(1:iRelativePath(1)-1);
+    iRelativePath = strfind(RecPathFull, [filesep, 'sub-']);
+    BidsFolder = RecPathFull(1:iRelativePath(1)-1);
+    RecPath = RecPathFull(iRelativePath(1)+1:end);
     if isfield(BidsInfo, 'Noise') 
         Noise = char(BidsInfo.Noise); % Converts empty [] to ''.
         Found = 3;
@@ -39,10 +40,17 @@ end
         Noise = '';
         Found = 0;
     end
+    if ~isempty(Noise)
+        [NoisePath, NoiseName] = fileparts(Noise);
+        if isempty(NoisePath)
+            % Means in same folder.
+            NoisePath = RecPath;
+            Noise = fullfile(NoisePath, Noise);
+        end
+    end
     if isNoise 
         if ~isempty(Noise)
             if Verbose
-                [~, NoiseName] = fileparts(Noise);
                 fprintf(iLog, '  Ignoring previous/provided noise %s.ds for noise recording %s.ds\n', NoiseName, RecName);
             end
             Noise = '';
@@ -57,13 +65,12 @@ end
         end
         if ~isempty(Noise) && ~exist(fullfile(BidsFolder, Noise), 'file')
             if Verbose
-                [~, NoiseName] = fileparts(Noise);
                 fprintf(iLog, '  Previous/provided %s.ds not found for %s.ds\n', NoiseName, RecName);
             end
             Found = 0;
         end
         % Look in same folder as recording.
-        Recordings = BidsRecordings(RecPath, false); % not verbose.
+        Recordings = BidsRecordings(RecPathFull, false); % not verbose.
         Recordings(~[Recordings(:).isNoise]) = [];
         % And the emptyroom subject folder.
         if isempty(EmptyroomRecordings)
@@ -82,7 +89,7 @@ end
         %[NoiseDates, Noise, P, S] = BidsScanDates(fullfile(BidsFolder, 'sub-emptyroom'), false); % Don't exclude noise scans.
         if ~isempty(NoiseDates)
             % Could get the date from the scans file instead.
-            Res4File = fullfile(RecPath, [RecName, RecExt], [RecName, '.res4']);
+            Res4File = fullfile(RecPathFull, [RecName, RecExt], [RecName, '.res4']);
             Res4 = Bids_ctf_read_res4(Res4File);
             ScanDate = datetime([Res4.res4.data_date, ' ', Res4.res4.data_time]);
             % min returns only one value and index, so if the same noise is both
@@ -112,4 +119,11 @@ end
         fprintf(iLog, '  Warning: Noise recording %s not found for %s.\n', Noise, RecName);
         Found = 0;
     end
+
+    % Simplify relative path when in subject folder. (Not clear if this would be BIDS compliant.)
+    %     [NoisePath, NoiseName, NoiseExt] = fileparts(Noise);
+    %     if strcmp(NoisePath, RecPath)
+    %         Noise = [NoiseName, NoiseExt];
+    %     end
+
 end

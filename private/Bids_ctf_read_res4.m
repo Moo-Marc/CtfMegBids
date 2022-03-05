@@ -1,4 +1,4 @@
-function res4Info = Bids_ctf_read_res4(res4Path)
+function [res4Info, DateBug] = Bids_ctf_read_res4(res4Path)
 
 % Oct 26, 2017: created - meets the requirements of MEG-BIDS v1
 % Elizabeth Bock
@@ -136,6 +136,7 @@ if fid < 0
     error([message, ' %s'], res4Path);
 end
 
+
 % Read HEADER
 hdr = fread(fid,8,'char')';
 
@@ -146,10 +147,12 @@ res4.dataDescription = char(fread(fid,256,'char')');
 res4.no_trials_avgd  =      fread(fid,  1,'int16')';
 res4.data_time       = strrep(char(fread(fid,255,'char')'), char(0), '');
 res4.data_date       = strrep(char(fread(fid,255,'char')'), char(0), '');
+DateBug = false;
 if isempty(res4.data_date)
     warning('No acquisition date/time.  Probably a tuning dataset.');
     res4.data_date = '01-Jan-1900';
     res4.data_time = '00:00';
+    DateBug = true;
 elseif numel(res4.data_date) < 10
     warning('Acq date/time bug.  This dataset should be fixed.');
     % Rare strange Acq bug: "locked" dataset (Acq probably crashed) with
@@ -157,10 +160,12 @@ elseif numel(res4.data_date) < 10
     tempdate = res4.data_time;
     res4.data_time = res4.data_date;
     res4.data_date = datestr(datetime(tempdate, 'InputFormat', 'dd/MM/uuuu'), 'dd-mmm-yyyy');
-elseif res4.data_date(1:2) == '00'
+    DateBug = true;
+elseif isequal(res4.data_date(1:2), '00')
     warning('Acq day zero bug.');
     % New software can output date as 00-Jan-1900, which is invalid.
     res4.data_date(1:2) = '01';
+    DateBug = true;
 end
 
 gSetUp.no_samples  = fread(fid,1,'int32')';
@@ -216,7 +221,7 @@ filtType  = {'TYPERROR','LOWPASS','HIGHPASS','NOTCH','','',''};
 no_filters = fread(fid,1,'int16');
 % Read all filters
 [filter(1:no_filters)] = struct('freq',[],'fClass',[],'fType',[],'numParam',[],'params',[]);
-for fi = 1:no_filters,
+for fi = 1:no_filters
     filter(fi).freq     = fread(fid,1,'double');
     % Filter class
     iClass = fread(fid,1,'int32') + 1;
@@ -239,6 +244,8 @@ end
 
 %% ===== READ COILS INFORMATION =====
 % Channel names
+channel_names = cell(1,gSetUp.no_channels);
+channel_names_short = cell(1,gSetUp.no_channels);
 for chan = 1:gSetUp.no_channels
     tmp = fread(fid,32,'uchar')';
     tmp = char(tmp);
@@ -250,6 +257,7 @@ end
 % Sensor types
 CoilType = {'CIRCULAR','SQUARE','???'};
 % Read description of all sensors
+SensorRes(gSetUp.no_channels) = struct();
 for chan = 1:gSetUp.no_channels
     SensorRes(chan).sensorTypeIndex = fread(fid,1,'int16');
     SensorRes(chan).originalRunNum = fread(fid,1,'int16');
@@ -281,7 +289,7 @@ for chan = 1:gSetUp.no_channels
         SensorRes(chan).coilTbl(coil).orient.z = fread(fid,1,'double');
         SensorRes(chan).coilTbl(coil).orient.junk = fread(fid,1,'double');
         SensorRes(chan).coilTbl(coil).numturns = fread(fid,1,'int16');
-        padding = fread(fid,1,'int32');
+        padding = fread(fid,1,'int32'); %#ok<*NASGU> 
         padding = fread(fid,1,'int16');
         SensorRes(chan).coilTbl(coil).area = fread(fid,1,'double');
     end

@@ -177,12 +177,14 @@ ExpectedFiles = [{ExpectedFiles.name}'; ...
     'ChannelGroupSet.cfg'; 'ChannelGroupSet.cfg.bak'; ...
     'VirtualChannels'; 'VirtualChannels.bak'; ...
     'DigTrigChannelInfo.txt'; 'DigTrigChannelInfo.txt.bak'; ...
+    'params.dsc'; 'params.dsc.bak'; ...
     'hz.ds'; '.'; '..'}];
 UnknownFiles = dir(fullfile(newDs, '*'));
 [~, iU] = setdiff({UnknownFiles.name}', ExpectedFiles);
 if ~isempty(iU)
     warning('Unknown files in %s', newDs);
     UnknownFiles = UnknownFiles(iU);
+    disp(UnknownFiles.name);
 end
 
 %% Delete unnecessary files
@@ -214,7 +216,11 @@ if isAnonymize
     delete(fullfile(newDs, '*.newds'));
     
     % default.de
-    delete(fullfile(newDs, 'default.de*'));    
+    delete(fullfile(newDs, 'default.de*'));
+
+    % params.dsc
+    % Text file "head localization parameters". Includes a date.
+    delete(fullfile(newDs, '*.dsc'));
 end
 
 % Could also delete hz*.ds
@@ -385,6 +391,27 @@ if ~isempty(infoDs) && (isAnonymize || ChangeDate)
     writeCPersist(fullfile(newDs,infoDs.name),CPersistObj)
 end
 
+%% *.res4
+% binary file that contains dataset info including the following
+% identifying fields:
+% nfSetUp.nf_run_name, nfSetUp.nf_run_title, nfSetUp.nf_instruments, nfSetUp.nf_collect_descriptor, nfSetUp.nf_subject_id, nfSetUp.nf_operator
+res4File = dir(fullfile(newDs, '*.res4'));
+[res4Info, DateBug] = Bids_ctf_read_res4(fullfile(newDs,res4File.name));
+if ChangeDate && KeepTime
+    DataTime = res4Info.res4.data_time;
+end
+if isAnonymize 
+    if ChangeDate
+        % Use null instead of empty to force erasing.
+        ctf_edit_res4(newDs, Subject, Task, char(0), DataTime, DataDate);
+    else
+        ctf_edit_res4(newDs, Subject, Task, char(0), res4Info.res4.data_time, res4Info.res4.data_date);
+    end
+elseif DateBug
+    % Fix some possible bugs in date and time.
+    ctf_edit_res4(newDs, [], [], [], res4Info.res4.data_time, res4Info.res4.data_date);
+end
+
 %% .xml (new file in beta software)
 if isAnonymize
     XmlFile = dir(fullfile(newDs, '*.xml'));
@@ -446,24 +473,6 @@ if isAnonymize
         XmlObj = UpdateXml(XmlObj, Tags, DataFun);
         
         xmlwrite(XmlFile, XmlObj);
-    end
-end
-
-%% *.res4
-% binary file that contains dataset info including the following
-% identifying fields:
-% nfSetUp.nf_run_name, nfSetUp.nf_run_title, nfSetUp.nf_instruments, nfSetUp.nf_collect_descriptor, nfSetUp.nf_subject_id, nfSetUp.nf_operator
-if ChangeDate && KeepTime
-    res4File = dir(fullfile(newDs, '*.res4'));
-    res4Info = Bids_ctf_read_res4(fullfile(newDs,res4File.name));
-    DataTime = res4Info.data_time;
-end
-if isAnonymize 
-    if ChangeDate
-        % Use null instead of empty to force erasing.
-        ctf_edit_res4(newDs, Subject, Task, char(0), DataTime, DataDate);
-    else
-        ctf_edit_res4(newDs, Subject, Task, char(0));
     end
 end
 

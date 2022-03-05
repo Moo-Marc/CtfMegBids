@@ -54,6 +54,7 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
     else
         Recordings = [];
     end
+    ChanOpts = [];
     for r = 1:nR
         if Verbose
             fprintf('\b\b\b\b%4d', r);
@@ -138,24 +139,29 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
         end
         
         % Get metadata from _coordsystem.json file.
-        CoordFile = fullfile(RecPath, ['sub-', Recordings(r).Subject, ...
-            '_ses-', Recordings(r).Session, '_coordsystem.json']);
-        if ~exist(CoordFile, 'file')
-            CoordFile1 = CoordFile;
-            % Look for coordinate files named with full recording name.
-            CoordFile = fullfile(RecPath, [RecName(1:end-3), 'coordsystem.json']);
-        end
-        if ~exist(CoordFile, 'file')
+        if Recordings(r).isNoise
             Recordings(r).Files.CoordSystem = '';
-            if Verbose && ~Recordings(r).isNoise
-                % Optional file so inform but not a warning.
-                fprintf('Missing coordsystem file: %s\n', CoordFile1);
-            end
+            Recordings(r).CoordSystem = struct();
         else
-            Recordings(r).Files.CoordSystem = CoordFile;
-            Fid = fopen(CoordFile);
-            Recordings(r).CoordSystem = jsondecode(fread(Fid, '*char')');
-            fclose(Fid);
+            CoordFile = fullfile(RecPath, ['sub-', Recordings(r).Subject, ...
+                '_ses-', Recordings(r).Session, '_coordsystem.json']);
+            if ~exist(CoordFile, 'file')
+                CoordFile1 = CoordFile;
+                % Look for coordinate files named with full recording name.
+                CoordFile = fullfile(RecPath, [RecName(1:end-3), 'coordsystem.json']);
+            end
+            if ~exist(CoordFile, 'file')
+                Recordings(r).Files.CoordSystem = '';
+                if Verbose
+                    % Optional file so inform but not a warning.
+                    fprintf('Missing coordsystem file: %s\n', CoordFile1);
+                end
+            else
+                Recordings(r).Files.CoordSystem = CoordFile;
+                Fid = fopen(CoordFile);
+                Recordings(r).CoordSystem = jsondecode(fread(Fid, '*char')');
+                fclose(Fid);
+            end
         end
         
         % Get metadata from _channels.tsv file.
@@ -168,15 +174,19 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
             end
         else
             Recordings(r).Files.Channels = ChannelFile;
-            Recordings(r).Channels = readtable(ChannelFile, ...
-                'FileType', 'text', 'Delimiter', '\t', 'ReadVariableNames', true);
+            % Force text type to keep 'n/a' values.
+            if isempty(ChanOpts)
+                ChanOpts = detectImportOptions(ChannelFile, 'FileType', 'text');
+                ChanOpts = setvartype(ChanOpts, {'low_cutoff', 'high_cutoff', 'notch'}, 'char');
+            end
+            Recordings(r).Channels = readtable(ChannelFile, ChanOpts);
         end
 
         % Get metadata from _events.tsv file.
         EventsFile = fullfile(RecPath, [RecName(1:end-3), 'events.tsv']);
         if ~exist(EventsFile, 'file') 
             Recordings(r).Files.Events = '';
-            Recordings(r).Events = table('Size', [0, 5], 'VariableTypes', {'double', 'double', 'double', 'double', 'string'}, ...
+            Recordings(r).Events = table('Size', [0, 5], 'VariableTypes', {'double', 'double', 'double', 'double', 'cellstr'}, ...
                 'VariableNames', {'onset', 'duration', 'ds_trial', 'sample', 'value'});
             if Verbose
                 % Optional file so inform but not a warning.

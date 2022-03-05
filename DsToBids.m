@@ -129,8 +129,26 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
             return;
         end
         
+        % Temporary until SessionLog is fixed: remove .pos inside .ds. Otherwise
+        % get warnings of unknown CTF files.
+        PosFile = dir(fullfile(Recording, '*.pos'));
+        for p = 1:numel(PosFile)
+            % Move out of .ds, without overwriting if smaller.  Otherwise, just delete.
+            ExistFile = dir(fullfile(DsFolder, PosFile(p).name));
+            if ~isempty(ExistFile) && ExistFile.bytes >= PosFile(p).bytes
+                [isOK, Msg] = delete(fullfile(PosFile(p).folder, PosFile(p).name));
+                if ~isOK
+                    fprintf(iLog, [Msg, '\n']);
+                end
+            else
+                [isOK, Msg] = movefile(fullfile(PosFile(p).folder, PosFile(p).name), DsFolder);
+                if ~isOK
+                    fprintf(iLog, [Msg, '\n']);
+                end
+            end
+        end
         % Modified Brainstorm function: ctf_rename_ds
-        Bids_ctf_rename_ds(Recording, NewName, NewFolder, Anonymize) 
+        Bids_ctf_rename_ds(Recording, NewName, NewFolder, Anonymize);
     end
     
     
@@ -167,10 +185,10 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
                     mkdir(ExtrasFolder);
                 end
                 Extras{end+1} = fullfile(ExtrasFolder, NewSessLogBak);
-                [Status, Msg] = movefile( ...
+                [isOK, Msg] = movefile( ...
                     fullfile(SessLogs(p).folder, SessLogs(p).name), ...
                     Extras{end} );
-                if ~Status
+                if ~isOK
                     fprintf(iLog, [Msg, '\n']);
                 end
             end
@@ -186,10 +204,10 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
                     mkdir(ExtrasFolder);
                 end
                 Extras{end+1} = fullfile(ExtrasFolder, NewSessLog);
-                [Status, Msg] = movefile( ...
+                [isOK, Msg] = movefile( ...
                     fullfile(SessLogs(p).folder, SessLogs(p).name), ...
                     Extras{end} );
-                if ~Status
+                if ~isOK
                     fprintf(iLog, [Msg, '\n']);
                 end
             end
@@ -216,10 +234,10 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
         end
         Extras{end+1} = fullfile(ExtrasFolder, ['sub-', BidsInfo.Subject, ...
             '_ses-', BidsInfo.Session, '_acq-', sprintf('%02d', p), '_photo', '.jpg']);
-        [Status, Msg] = movefile( ...
+        [isOK, Msg] = movefile( ...
             fullfile(Pics(p).folder, Pics(p).name), ...
             Extras{end} );
-        if ~Status
+        if ~isOK
             fprintf(iLog, [Msg, '\n']);
         end
     end % .jpg file loop
@@ -255,10 +273,10 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
             % Move.
             % Head shape file is not considered an "extra".
             %Extras{end+1} = fullfile(NewFolder, NewHeadShape);
-            [Status, Msg] = movefile( ...
+            [isOK, Msg] = movefile( ...
                 fullfile(PosFile(p).folder, PosFile(p).name), ...
                 fullfile(NewFolder, NewPosFile) );
-            if ~Status
+            if ~isOK
                 fprintf(iLog, [Msg, '\n']);
             end
         end
@@ -298,10 +316,10 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
                 mkdir(ExtrasFolder);
             end
             Extras{end+1} = fullfile(ExtrasFolder, NewOtherFile);
-            [Status, Msg] = movefile( ...
+            [isOK, Msg] = movefile( ...
                 fullfile(OtherFiles(p).folder, OtherFiles(p).name), ...
                 Extras{end} );
-            if ~Status
+            if ~isOK
                 fprintf(iLog, [Msg, '\n']);
             end
         end
@@ -314,8 +332,8 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
         RemainingFiles(strcmpi({RemainingFiles.name}, '.')) = [];
         RemainingFiles(strcmpi({RemainingFiles.name}, '..')) = [];
         if isempty(RemainingFiles) % && exist(DsFolder, 'dir')
-            [Status, Msg] = rmdir(DsFolder);
-            if ~Status
+            [isOK, Msg] = rmdir(DsFolder);
+            if ~isOK
                 fprintf(iLog, [Msg, '\n']);
             end
         end

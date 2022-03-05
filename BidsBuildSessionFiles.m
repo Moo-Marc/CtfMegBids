@@ -88,7 +88,7 @@ function BidsInfo = BidsBuildSessionFiles(Recording, BidsInfo, Overwrite, SaveFi
             Scans = Scan;
             % struct2table(struct('filename', '', 'acq_time', NaT(0, 1))); % empty table
         end
-        WriteScans(Scans, ScansFile);
+        WriteScans(ScansFile, Scans);
     end
     if Output
         BidsInfo.Scan = Scan;

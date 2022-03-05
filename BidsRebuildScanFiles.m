@@ -265,7 +265,7 @@ function [Recordings, Dataset, Message] = BidsRebuildScanFiles(...
                     any(~ismember(OldScans.filename, Scans.filename(iScans))) )
                 % Write sorted in chronological order.  This means a file may
                 % get saved without verbose indicating any changes.
-                WriteScans(TempScans, OldScansFile);
+                WriteScans(OldScansFile, TempScans);
             end
             if Verbose
                 % Sort in chronological order for comparison.

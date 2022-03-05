@@ -1,4 +1,4 @@
-function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart)
+function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart, isFull)
     % Rename a subject ID everywhere in a CTF MEG BIDS dataset.
     %
     % Files, folders, inside BIDS scans.tsv and inside raw data files. Includes
@@ -7,18 +7,34 @@ function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart)
     %   
     % Marc Lalancette 2022-02-07
     
-    OldExpr = ['sub-([a-zA-Z0-9]*)', OldNamePart, '([a-zA-Z0-9]*)_ses'];
-    NewExpr = ['sub-$1', NewNamePart, '$2_ses'];
+    if nargin < 4 || isempty(isFull)
+        isFull = false;
+    end
+    if isFull
+        OldExpr = ['sub-', OldNamePart, '_ses'];
+        NewExpr = ['sub-', NewNamePart, '_ses'];
+    else
+        OldExpr = ['sub-([a-zA-Z0-9]*)', OldNamePart, '([a-zA-Z0-9]*)_ses'];
+        NewExpr = ['sub-$1', NewNamePart, '$2_ses'];
+    end
 
     % Rename recordings first, including inside raw data files (infods, res4, xml, etc.).
-    List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*_ses*.ds']));
+    if isFull
+        List = dir(fullfile(BidsFolder, '**', ['*sub-', OldNamePart, '_ses*.ds']));
+    else
+        List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*_ses*.ds']));
+    end
     for f = 1:numel(List)
         Bids_ctf_rename_ds(fullfile(List(f).folder, List(f).name), ...
             regexprep(List(f).name, OldExpr, NewExpr));
     end
 
     % Rename other files.
-    List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*_ses*']));
+    if isFull
+        List = dir(fullfile(BidsFolder, '**', ['*sub-', OldNamePart, '_ses*']));
+    else
+        List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*_ses*']));
+    end
     List([List.isdir]) = [];
     for f = 1:numel(List)
         [IsOk, Message] = movefile(fullfile(List(f).folder, List(f).name), ...
@@ -30,7 +46,13 @@ function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart)
     
     % Rename folders after, inverse list order so that subfolders
     % (datasets) are renamed before their parents (subject folders).
-    List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*']));
+    if isFull
+        List = dir(fullfile(BidsFolder, '**', ['*sub-', OldNamePart, '*']));
+    else
+        List = dir(fullfile(BidsFolder, '**', ['*sub-*', OldNamePart, '*']));
+        % For cases where the pattern could be found in the session, remove recordings.
+        List(contains({List.name}, '.ds')) = [];
+    end
     List(~[List.isdir]) = [];
     for f = numel(List):-1:1
         if List(f).isdir
@@ -43,7 +65,11 @@ function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart)
     end
     
     % Rename metadata inside BIDS scans.tsv files.
-    List = dir(fullfile(BidsFolder, '**', ['*sub-*', NewNamePart, '*_scans.tsv']));
+    if isFull
+        List = dir(fullfile(BidsFolder, '**', ['*sub-', NewNamePart, '*_scans.tsv']));
+    else
+        List = dir(fullfile(BidsFolder, '**', ['*sub-*', NewNamePart, '*_scans.tsv']));
+    end
     for f = 1:numel(List)
         ScansFile = fullfile(List(f).folder, List(f).name);
         Fid = fopen(ScansFile, 'r');
