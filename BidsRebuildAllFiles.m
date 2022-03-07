@@ -383,7 +383,7 @@ function [Recordings, Dataset, Message] = BidsRebuildAllFiles(...
         error('Unexpected number of scans, maybe BidsBuildSessionFiles problem.');
     end
     ScansFiles = arrayfun(@(x) x.Files.Scans, Recordings, 'UniformOutput', false)';
-    OldScansFiles = dir(fullfile(BidsFolder, '**', '*scans.tsv'));
+    OldScansFiles = dir(fullfile(BidsFolder, 'sub-*', '**', '*scans.tsv'));
     %     if Verbose
     %         Message{end+1} = sprintf('Checking for extra scans.\n');
     %         fprintf(Message{end});

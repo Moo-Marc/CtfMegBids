@@ -333,6 +333,12 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     % What can change between (regular) runs is the presence of EEG channels.
     % Don't create the coord file for noise: no head, not CTF coord sys.
     if ~isNoise
+        % This is technically wrong, we could load the meg.json to check, but if
+        % CoordFile already exists, assume it's ok.  The risk of missing the
+        % EEGCoordinateSystem info is low anyway.
+        if ~exist('EEGChannelCount', 'var')
+            EEGChannelCount = 0;
+        end
         if ~exist(CoordFile, 'file') || Overwrite || Output || EEGChannelCount > 0
             J = struct();
             System = 'CTF';

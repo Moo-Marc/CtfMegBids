@@ -1,5 +1,8 @@
-function BidsShiftDates(BidsFolder, TrustScans)
+function BidsShiftDates(BidsFolder, TrustScans, Subjects)
 % Shift dates per subject for anonymization of BIDS dataset.
+%
+% BidsFolder must be the root of the BIDS dataset, but specific subjects can be
+% specified.
 %
 % See the following discussion on specifying date shifting:
 %  https://github.com/bids-standard/bids-specification/issues/538
@@ -14,6 +17,11 @@ function BidsShiftDates(BidsFolder, TrustScans)
 %
 % Marc Lalancette 1922-03-04
 
+if nargin < 3 
+    Subjects = {};
+elseif ischar(Subjects)
+    Subjects = {Subjects};
+end
 if nargin < 2 || isempty(TrustScans)
     TrustScans = false;
 end
@@ -21,6 +29,10 @@ end
 TargetInitialDate = datetime('2000-01-01 12:00:00'); % time is only to avoid rounding to 1999-12-31
 BackupFolder = 'sourcedata';
 
+DataDescripFile = fullfile(BidsFolder, 'dataset_description.json');
+if ~exist(DataDescripFile, 'file')
+    error('BidsFolder should be the BIDS root folder: missing dataset_description.json');
+end
 % Load "database": for now text file in sourcedata root. Use BIDS style tsv
 % table and json description file.
 DbFile = fullfile(BidsFolder, BackupFolder, 'date_shifting.tsv');
@@ -59,7 +71,17 @@ end
 Db = readtable(DbFile, 'FileType', 'text', 'Delimiter', '\t', 'ReadVariableNames', true);
 
 % Get all scans.tsv files in subject folders (since we back them up in sourcedata)
-ScansList = dir(fullfile(BidsFolder, 'sub-*', '**', '*_scans.tsv'));
+if isempty(Subjects)
+    ScansList = dir(fullfile(BidsFolder, 'sub-*', '**', '*_scans.tsv'));
+else
+    ScansList = [];
+    for iSub = 1:numel(Subjects)
+%         if iSub == 1
+%             ScansList = dir(fullfile(BidsFolder, Subjects{iSub}, '**', '*_scans.tsv'));
+%         else
+            ScansList = [ScansList; dir(fullfile(BidsFolder, Subjects{iSub}, '**', '*_scans.tsv'))]; %#ok<AGROW> 
+    end
+end
 nScans = numel(ScansList);
 
 % Catch errors to save database before exiting.

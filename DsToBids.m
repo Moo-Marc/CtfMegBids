@@ -136,10 +136,7 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
             % Move out of .ds, without overwriting if smaller.  Otherwise, just delete.
             ExistFile = dir(fullfile(DsFolder, PosFile(p).name));
             if ~isempty(ExistFile) && ExistFile.bytes >= PosFile(p).bytes
-                [isOK, Msg] = delete(fullfile(PosFile(p).folder, PosFile(p).name));
-                if ~isOK
-                    fprintf(iLog, [Msg, '\n']);
-                end
+                delete(fullfile(PosFile(p).folder, PosFile(p).name));
             else
                 [isOK, Msg] = movefile(fullfile(PosFile(p).folder, PosFile(p).name), DsFolder);
                 if ~isOK

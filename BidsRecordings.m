@@ -152,7 +152,7 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
             end
             if ~exist(CoordFile, 'file')
                 Recordings(r).Files.CoordSystem = '';
-                if Verbose
+                if Verbose && ~Recordings(r).isNoise
                     % Optional file so inform but not a warning.
                     fprintf('Missing coordsystem file: %s\n', CoordFile1);
                 end
@@ -188,10 +188,10 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
             Recordings(r).Files.Events = '';
             Recordings(r).Events = table('Size', [0, 5], 'VariableTypes', {'double', 'double', 'double', 'double', 'cellstr'}, ...
                 'VariableNames', {'onset', 'duration', 'ds_trial', 'sample', 'value'});
-            if Verbose
-                % Optional file so inform but not a warning.
-                fprintf('Missing events file: %s\n', EventsFile);
-            end
+            %if Verbose && ~Recordings(r).isNoise
+            %    % Optional file so inform but not a warning.
+            %    fprintf('Missing events file: %s\n', EventsFile);
+            %end
         else
             Recordings(r).Files.Events = EventsFile;
             Recordings(r).Events = readtable(EventsFile, ...
