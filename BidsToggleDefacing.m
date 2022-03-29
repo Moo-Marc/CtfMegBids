@@ -35,7 +35,7 @@ elseif ischar(ContinueFrom)
         error('ContinueFrom not found.');
     end
 else
-    error('ContinueFrom should be subject name (without sub-) or index.');
+    error('ContinueFrom should be subject name or index.');
 end
 
 fprintf('Found %d T1w images.\n', nA);

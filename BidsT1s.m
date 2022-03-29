@@ -22,7 +22,7 @@ function [Images, Dataset] = BidsT1s(BidsFolder, Verbose)
         error('Folder not found: %s', BidsFolder);
     end
     % Find T1w MRIs (*_T1w.nii.gz) in this folder.
-    ImageList = dir(fullfile(BidsFolder, '**', '*_T1w.nii*'));
+    ImageList = dir(fullfile(BidsFolder, 'sub-*', '**', '*_T1w.nii*'));
     nI = numel(ImageList);
         
     Images(nI) = struct('Name', '', 'Folder', '', 'Subject', '', 'Session', '', ...
