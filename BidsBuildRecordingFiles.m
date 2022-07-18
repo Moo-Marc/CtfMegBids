@@ -18,7 +18,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
 % iLog: File ID of log file already open for writing, or output to Matlab command
 % window (iLog=1, default).
 %
-% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2022-02-08
+% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2022-07-14
     
     if nargin < 6 || isempty(iLog)
         iLog = 1;
@@ -272,14 +272,12 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         end
         if ~isempty(InfoDs)
             J.ContinuousHeadLocalization = InfoDs.DATASET_INFO.DATASET_HZ_MODE == 5;
-        end
-        if J.ContinuousHeadLocalization
-            J.HeadCoilFrequency = HeadCoilFreq; % Extracted from .acq file above.
-            % Don't read head motion if nominal position used. (TO VERIFY, could still be good)
-            if ~isempty(InfoDs) && ~InfoDs.DATASET_INFO.DATASET_NOMINALHCPOSITIONS
-                %         J.MaxMovement = [];
-                %     else
-                J.MaxMovement = NumTrim(1000 * InfoDs.DATASET_INFO.DATASET_MAXHEADMOTION, 3); % m to mm, round to micro-m
+            if J.ContinuousHeadLocalization
+                J.HeadCoilFrequency = HeadCoilFreq; % Extracted from .acq file above.
+                % Don't read head motion if nominal position used. (TO VERIFY, could still be good)
+                if ~InfoDs.DATASET_INFO.DATASET_NOMINALHCPOSITIONS
+                    J.MaxMovement = NumTrim(1000 * InfoDs.DATASET_INFO.DATASET_MAXHEADMOTION, 3); % m to mm, round to micro-m
+                end
             end
         end
         if ~isempty(Artefact)

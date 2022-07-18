@@ -1,9 +1,22 @@
-function BidsToggleDefacing(BidsFolder, isDeface, ContinueFrom)
+function BidsToggleDefacing(BidsFolder, isDeface, ContinueFrom, FixCoordinates, isDenoised)
 % Toggle original or defaced T1w scans in BIDS dataset, by copying from sourcedata or derivatives respectively.
 %
 % isDeface must be present: true to copy defaced images, or false to copy originals.
 % Marc Lalancette 2022-03-04
 
+DenSuffix = '_N4_denoised';
+
+if nargin < 5 || isempty(isDenoised)
+    isDenoised = false;
+    % elseif isDenoised && isDeface
+    %     warning('Denoising is performed during defacing.');
+end
+if nargin < 4 || isempty(FixCoordinates)
+    FixCoordinates = false;
+elseif FixCoordinates && ~isDeface
+    error('Fixing defaced coordinates only possible when isDeface is true.')
+end
+% nargin < 3 done below.
 if nargin < 2 || isempty(isDeface)
     error('Missing input arguments.');
 end
@@ -58,12 +71,22 @@ for iA = iStart:nA
     end
     Defaced = replace(Current, BidsFolder, Deriv);
     % We presume extension is .nii.gz, file won't be found otherwise.
-    Defaced = [Defaced(1:end-7), '_full_normfilter.nii.gz'];
-    if ~exist(Defaced, 'file')
-        error('Missing defaced image in derivatives. Defacing must be done first. %s', AnatList(iA).name);
-    end
     if isDeface % Deface
+        Defaced = [Defaced(1:end-7), '_defaced.nii.gz'];
+        if ~exist(Defaced, 'file')
+            error('Missing defaced image in derivatives. Defacing must be done first. %s', AnatList(iA).name);
+        end
+        if FixCoordinates
+            NiftiDefaceFix(Original, Defaced);
+        end
         [isOk, Message] = copyfile(Defaced, Current, 'f');
+        if ~isOk, error(Message); end
+    elseif isDenoised % Get denoised original from derivatives folder
+        Denoised = [Defaced(1:end-7) DenSuffix '.nii.gz'];
+        if ~exist(Denoised, 'file')
+            error('Missing denoised image in derivatives. Defacing must be done with denoising option first. %s', AnatList(iA).name);
+        end
+        [isOk, Message] = copyfile(Denoised, Current, 'f');
         if ~isOk, error(Message); end
     else % Restore original
         [isOk, Message] = copyfile(Original, Current, 'f');

@@ -1,4 +1,4 @@
-function [res4Info, DateBug] = Bids_ctf_read_res4(res4Path)
+function [res4Info, DateBug] = Bids_ctf_read_res4(res4Path, isQuiet)
 
 % Oct 26, 2017: created - meets the requirements of MEG-BIDS v1
 % Elizabeth Bock
@@ -7,6 +7,10 @@ function [res4Info, DateBug] = Bids_ctf_read_res4(res4Path)
 % characters from date/time fields. (Should probably remove in all text
 % fields.)
 %  Marc Lalancette
+
+if nargin < 2 || isempty(isQuiet)
+    isQuiet = false;
+end
 
 % ===== INTIALIZATIONS ======
 % Define constants
@@ -149,12 +153,16 @@ res4.data_time       = strrep(char(fread(fid,255,'char')'), char(0), '');
 res4.data_date       = strrep(char(fread(fid,255,'char')'), char(0), '');
 DateBug = false;
 if isempty(res4.data_date)
-    warning('No acquisition date/time.  Probably a tuning dataset.');
+    if ~isQuiet
+        warning('No acquisition date/time.  Probably a tuning dataset.');
+    end
     res4.data_date = '01-Jan-1900';
     res4.data_time = '00:00';
     DateBug = true;
 elseif numel(res4.data_date) < 10
-    warning('Acq date/time bug.  This dataset should be fixed.');
+    if ~isQuiet
+        warning('Acq date/time bug.  This dataset should be fixed.');
+    end
     % Rare strange Acq bug: "locked" dataset (Acq probably crashed) with
     % inverted date and time fields and different format!
     tempdate = res4.data_time;
@@ -162,7 +170,9 @@ elseif numel(res4.data_date) < 10
     res4.data_date = datestr(datetime(tempdate, 'InputFormat', 'dd/MM/uuuu'), 'dd-mmm-yyyy');
     DateBug = true;
 elseif isequal(res4.data_date(1:2), '00')
-    warning('Acq day zero bug.');
+    if ~isQuiet
+        warning('Acq day zero bug.');
+    end
     % New software can output date as 00-Jan-1900, which is invalid.
     res4.data_date(1:2) = '01';
     DateBug = true;

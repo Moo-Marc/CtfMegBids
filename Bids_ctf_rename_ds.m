@@ -396,7 +396,8 @@ end
 % identifying fields:
 % nfSetUp.nf_run_name, nfSetUp.nf_run_title, nfSetUp.nf_instruments, nfSetUp.nf_collect_descriptor, nfSetUp.nf_subject_id, nfSetUp.nf_operator
 res4File = dir(fullfile(newDs, '*.res4'));
-[res4Info, DateBug] = Bids_ctf_read_res4(fullfile(newDs,res4File.name));
+isQuiet = true; % Avoid date/time bug warnings that we fix here anyway.
+[res4Info, DateBug] = Bids_ctf_read_res4(fullfile(newDs,res4File.name), isQuiet);
 if ChangeDate && KeepTime
     DataTime = res4Info.res4.data_time;
 end

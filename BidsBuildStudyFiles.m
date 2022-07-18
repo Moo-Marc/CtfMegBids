@@ -6,7 +6,7 @@ function BidsInfo = BidsBuildStudyFiles(BidsFolder, BidsInfo, Overwrite, SaveFil
     %
     % Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2021-05-18
     
-    BIDSVersion = '1.6.0';
+    BIDSVersion = '1.7.0';
     
     if nargin < 5 || isempty(RemoveEmptyFields)
         RemoveEmptyFields = false;

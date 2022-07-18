@@ -1,5 +1,5 @@
 function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
-        ExtrasFolder, iLog)
+        ExtrasFolder, iLog, SkipEmptyRecordings)
     % Convert single CTF recording and adjoining files to BIDS structure.
     %
     % Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
@@ -40,6 +40,9 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
     
     if nargin < 3
         error('Not enough inputs.');
+    end
+    if nargin < 7 || isempty(SkipEmptyRecordings)
+        SkipEmptyRecordings = false;
     end
     if nargin < 6 || isempty(iLog)
         iLog = 1;
@@ -127,6 +130,17 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
         elseif exist(fullfile(NewFolder, NewName), 'dir')
             fprintf(iLog, '  Warning: Destination already exists, ignoring.\n');
             return;
+        end
+        % Verify if this is an empty recording (crashed Acq with .lock and .meg4 of 8 bytes).
+        if SkipEmptyRecordings
+            Meg4File = dir(fullfile(Recording, [DsName '.meg4']));
+            if isempty(Meg4File)
+                fprintf(iLog, '  Error: meg4 file not found.\n');
+                return;
+            elseif Meg4File(1).bytes == 8
+                fprintf(iLog, '  Skipping recording with no data (Acq crash).\n');
+                return;
+            end
         end
         
         % Temporary until SessionLog is fixed: remove .pos inside .ds. Otherwise

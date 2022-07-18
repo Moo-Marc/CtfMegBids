@@ -1,9 +1,9 @@
 function [Dates, Files, Subjects, Sessions] = BidsScanDates(BidsFolder, MegOnly, ExcludeNoise, Verbose)
     % Extract scan dates from CTF MEG BIDS dataset.
     %
-    % [Dates, Files, Subjects, Sessions] = BidsScanDates(Folder, ExcludeNoise)
+    % [Dates, Files, Subjects, Sessions] = BidsScanDates(BidsFolder, MegOnly, ExcludeNoise, Verbose)
     %
-    % Marc Lalancette, 2021-04-27
+    % Marc Lalancette, 2022-07-17
     
     if nargin < 4 || isempty(Verbose)
         Verbose = true;
@@ -24,8 +24,14 @@ function [Dates, Files, Subjects, Sessions] = BidsScanDates(BidsFolder, MegOnly,
             Recordings([Recordings(:).isNoise]) = [];
         end
         Files = vertcat(Recordings(:).Scan);
-        Dates = table2array(Files.acq_time);
-        Files = table2cell(Files.filename);
+        % Was this different depending on Matlab version?
+        if istable(Files.acq_time) 
+            Dates = table2array(Files.acq_time);
+            Files = table2cell(Files.filename);
+        else
+            Dates = Files.acq_time;
+            Files = Files.filename;
+        end
         Subjects = {Recordings(:).Subject}';
         Sessions = {Recordings(:).Session}';
     else
