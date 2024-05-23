@@ -71,7 +71,7 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
                     end
                     MergeScansFile(fullfile(Source, T.ScansFile{iSes}), fullfile(Destination, T.ScansFile{iSes-1}));
                 end
-            else
+            else % different session
                 SesNum = SesNum + 1;
             end
         else
@@ -79,17 +79,36 @@ function T = BidsMerge(Source, Destination, SortSessions, ZeroPad)
         end
         T.Session{iSes} = num2str(SesNum, ['%0' num2str(ZeroPad, '%u') 'u']);
 
+        % Check if that new number already exists.
+        isSameSes = strcmp(T.Subject, T.Subject{iSes}) & ((1:nT)' > iSes) & strcmp(T.OldSes, T.Session{iSes}) & T.isDest == T.isDest(iSes);
+        if any(isSameSes)
+            % Rename conflicting session(s) number temporarily.
+            for iOldSes = find(isSameSes)
+                % Rename session.
+                if T.isDest(iOldSes)
+                    BidsRenameSession(fullfile(Destination, ['sub-' T.Subject{iOldSes}]), ...
+                        T.OldSes{iOldSes}, [T.OldSes{iOldSes} 'temp'], true);
+                else
+                    BidsRenameSession(fullfile(Source, ['sub-' T.Subject{iOldSes}]), ...
+                        T.OldSes{iOldSes}, [T.OldSes{iOldSes} 'temp'], true);
+                end
+                % Rename scan file in table.
+                T.ScansFile{iOldSes} = replace(T.ScansFile{iOldSes}, ['ses-' T.OldSes{iOldSes}], ['ses-' T.OldSes{iOldSes} 'temp']);
+                % Rename old session in table
+                T.OldSes{iOldSes} = [T.OldSes{iOldSes} 'temp'];
+            end
+        end
         % Rename sessions: directories, files, and inside a few CTF data files.
         if SortSessions && ~strcmp(T.OldSes{iSes}, T.Session{iSes})
             if T.isDest(iSes)
                 BidsRenameSession(fullfile(Destination, ['sub-' T.Subject{iSes}]), ...
-                    T.OldSes{iSes}, T.Session{iSes});
+                    T.OldSes{iSes}, T.Session{iSes}, true);
             else
                 BidsRenameSession(fullfile(Source, ['sub-' T.Subject{iSes}]), ...
-                    T.OldSes{iSes}, T.Session{iSes});
+                    T.OldSes{iSes}, T.Session{iSes}, true);
             end
-            % Also rename file in table.
-            T.ScansFile{iSes} = replace(T.ScansFile{iSes}, T.OldSes{iSes}, T.Session{iSes});
+            % Also rename file in table (unnecessary).
+            T.ScansFile{iSes} = replace(T.ScansFile{iSes}, ['ses-' T.OldSes{iSes}], ['ses-' T.Session{iSes}]);
         end
     end
     

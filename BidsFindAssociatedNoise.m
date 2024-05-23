@@ -85,6 +85,7 @@ end
         end
         if numel(NoiseDates) < numel(Recordings)
             fprintf(iLog, '  Warning: Missing noise scan.tsv files for %s.ds\n', RecName);
+            error('Missing noise scan.tsv files for %s.ds\n', RecName);
         end
         %[NoiseDates, Noise, P, S] = BidsScanDates(fullfile(BidsFolder, 'sub-emptyroom'), false); % Don't exclude noise scans.
         if ~isempty(NoiseDates)

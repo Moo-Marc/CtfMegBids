@@ -201,7 +201,11 @@ function MegToBids(AcqDateFolder, Destination, UseSubEmptyroom, SaveLog, StudyNa
                 if UseSubEmptyroom
                     BidsInfo.Subject = 'emptyroom';
                 end
-                BidsInfo.Task = 'noise';
+                % Careful not to try to give same name if run was not a number, e.g. in system test sessions.
+                if ~isempty(BidsInfo.Run) || strcmpi(TaskRun, 'noise')
+                    BidsInfo.Task = 'noise';
+                % else already joined noise and TaskRun text.
+                end
             end
             
             % Standardize resting state task names.  BIDS prescribes: "(for resting state use the rest prefix)"

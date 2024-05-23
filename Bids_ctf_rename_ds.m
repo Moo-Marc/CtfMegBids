@@ -181,9 +181,9 @@ ExpectedFiles = [{ExpectedFiles.name}'; ...
     'hz.ds'; '.'; '..'}];
 UnknownFiles = dir(fullfile(newDs, '*'));
 [~, iU] = setdiff({UnknownFiles.name}', ExpectedFiles);
+UnknownFiles = UnknownFiles(iU);
 if ~isempty(iU)
     warning('Unknown files in %s', newDs);
-    UnknownFiles = UnknownFiles(iU);
     disp(UnknownFiles.name);
 end
 

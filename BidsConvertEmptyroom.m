@@ -42,7 +42,7 @@ end
 % Get all recordings metadata.
 [Recordings, ~, BidsFolder] = BidsRecordings(BidsFolder, false, true); % not Verbose, NoiseFirst
 nR = numel(Recordings);
-
+fprintf('Found %d recordings. Processing...\n', nR);
 EmptyroomRecordings = [];
 AllFound = true;
 for r = 1:nR
@@ -71,7 +71,7 @@ for r = 1:nR
             Recordings(r).Meg.AssociatedEmptyRoom = Noise;
             WriteJson(Recordings(r).Files.Meg, Recordings(r).Meg);
         end
-    else
+    else % found under emptyroom subject
         % Double check it's from emptyroom subject
         [~, NoiseInfo] = BidsParseRecordingName(NoiseName);
         if ~strcmp(NoiseInfo.Subject, 'emptyroom')
@@ -117,9 +117,10 @@ for r = 1:nR
             end
         end
         % Edit destination session table (ignore emptyroom session table).
-        BidsBuildSessionFiles(fullfile(BidsFolder, Recordings(r).Folder, NewName), [], true, true); % Overwrite, SaveFiles.
+        NewNoise = fullfile(Recordings(r).Folder, NewName);
+        BidsBuildSessionFiles(fullfile(BidsFolder, NewNoise), [], true, true); % Overwrite, SaveFiles.
         % Update 
-        Recordings(r).Meg.AssociatedEmptyRoom = Noise;
+        Recordings(r).Meg.AssociatedEmptyRoom = NewNoise;
         WriteJson(Recordings(r).Files.Meg, Recordings(r).Meg);
     end
 end
@@ -152,6 +153,7 @@ end
 if ~AllFound
     warning('Some sessions not associated with a noise recording (none found matching).');
 end
+fprintf('Done.\n');
 
 end
 

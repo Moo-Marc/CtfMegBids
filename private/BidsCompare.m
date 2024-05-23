@@ -1,4 +1,4 @@
-function Message = Compare(Old, New, Field) %, TableToScalar
+function Message = BidsCompare(Old, New, Field) %, TableToScalar
     % Message is cell 1xN (line).
     % TableToScalar true will cause entire columns (with differences) to be
     % printed on one line. Recommended for channels table, but not for
@@ -38,24 +38,24 @@ function Message = Compare(Old, New, Field) %, TableToScalar
                 % Could loop on cells here.
                 % Try converting to "table-like" struct, by columns. This can give errors.
                 CellNames = arrayfun(@(x)sprintf('CellColumn%d',x), 1:size(New, 2), 'UniformOutput', false);
-                Message = Compare(cell2struct(Old, CellNames, 2), cell2struct(New, CellNames, 2), Field);
+                Message = BidsCompare(cell2struct(Old, CellNames, 2), cell2struct(New, CellNames, 2), Field);
             end
         case 'string' % string array
             if any(setdiff(size(Old), 1) ~= setdiff(size(New), 1)) || ~isempty(setxor(Old(:), New(:)))
                 Message = {sprintf(OutFormat, Field, AutoSprintf(Old), AutoSprintf(New))};
             end
         case 'struct'
-            if any(setdiff(size(Old), [0,1]) ~= setdiff(size(New), [0,1]))
+            if any(size(Old) ~= size(New)) && any([size(Old), size(New)] > 1)
                 % Just give overview of size difference.
                 Message = {sprintf(OutFormat, Field, AutoSprintf(Old), AutoSprintf(New))};
             elseif numel(New) > 1
                 if isempty(Old)
                     for s = 1:numel(New)
-                        Message = [Message, Compare([], New(s), sprintf('%s(%d)', Field, s))]; %#ok<*AGROW>
+                        Message = [Message, BidsCompare([], New(s), sprintf('%s(%d)', Field, s))]; %#ok<*AGROW>
                     end
                 else
                     for s = 1:numel(New)
-                        Message = [Message, Compare(Old(s), New(s), sprintf('%s(%d)', Field, s))];
+                        Message = [Message, BidsCompare(Old(s), New(s), sprintf('%s(%d)', Field, s))];
                     end
                 end
             else
@@ -67,7 +67,11 @@ function Message = Compare(Old, New, Field) %, TableToScalar
                     elseif isempty(New) && ~isempty(Old)
                         Message{end+1} = sprintf(OutFormat, Field, AutoSprintf(Old.(Field)), '(none)');
                     elseif ~isempty(New) % && ~isempty(Old)
-                        Message = [Message, Compare(Old.(Field), New.(Field), Field)];
+                        try
+                        Message = [Message, BidsCompare(Old.(Field), New.(Field), Field)];
+                        catch
+                            keyboard;
+                        end
                     % else both are empty, do nothing
                     end
                 end
@@ -79,7 +83,7 @@ function Message = Compare(Old, New, Field) %, TableToScalar
             else
                 % Only go into table line by line if small.
                 TableToScalar = size(New, 1) >= 10;
-                Message = Compare(table2struct(Old, 'ToScalar', TableToScalar), table2struct(New, 'ToScalar', TableToScalar), Field);
+                Message = BidsCompare(table2struct(Old, 'ToScalar', TableToScalar), table2struct(New, 'ToScalar', TableToScalar), Field);
             end
         otherwise
             error('Unsupported class %s', class(New));

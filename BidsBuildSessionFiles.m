@@ -45,10 +45,13 @@ function BidsInfo = BidsBuildSessionFiles(Recording, BidsInfo, Overwrite, SaveFi
                 InfoDs = CPersistToStruct(readCPersist(InfoDsFile, 0));
                 ScanDate = datetime(InfoDs.DATASET_INFO.DATASET_COLLECTIONDATETIME, 'InputFormat', 'yyyyMMddhhmmss');
             end
-        case '.nii'
+        case {'.nii', '.gz'}
             Modality = 'anat';
-        case '.gz'
-            Modality = 'anat';
+            ScanDate = NaT;
+            if ~isempty(BidsInfo) && isfield(BidsInfo, 'Date')
+                % Temporary way to use this for anat too.
+                ScanDate = BidsInfo.Date;
+            end
         otherwise
             error('Unrecognized modality: %s', RecExt);
     end
@@ -65,7 +68,7 @@ function BidsInfo = BidsBuildSessionFiles(Recording, BidsInfo, Overwrite, SaveFi
     Scan = struct2table(Scan);    
 
     if isempty(BidsInfo)
-        [~, BidsInfo] = BidsParseRecordingName([RecName, RecExt]);
+       [~, BidsInfo] = BidsParseRecordingName([RecName, RecExt]);
     end
     iRelativePath = strfind(RecPath, [filesep, 'sub-']);
     BidsFolder = RecPath(1:iRelativePath(1)-1);
