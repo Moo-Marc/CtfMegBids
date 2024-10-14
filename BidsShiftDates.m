@@ -1,8 +1,17 @@
 function BidsShiftDates(BidsFolder, TrustScans, Subjects)
-% Shift dates per subject for anonymization of BIDS dataset.
+% Shift session dates per subject for anonymization of BIDS dataset.
+%
+% Each session's date is compared to its computed shifted date (once at least one session is
+% shifted) based on the backup scans.tsv, and shifted if needed.  Do not mix or merge shifted and
+% non-shifted recordings within a session.  To add a non shifted recording to a shifted session,
+% copy sourcedata/date_shifting.tsv from the shifted dataset to the non-shifted one, shift there,
+% then merge.
+%
+% If TrustScans is set to true, don't verify the date of MEG recordings if
+% the corresponding scans.tsv file entry is already shifted. 
 %
 % BidsFolder must be the root of the BIDS dataset, but specific subjects can be
-% specified.
+% specified, as strings e.g. {'sub-0001', 'sub-0002'}.
 %
 % See the following discussion on specifying date shifting:
 %  https://github.com/bids-standard/bids-specification/issues/538
@@ -12,15 +21,17 @@ function BidsShiftDates(BidsFolder, TrustScans, Subjects)
 % website, etc.)
 %
 % Dates only appear inside CTF dataset files (many), and in BIDS scans.tsv
-% files. if TrustScans is set to true, don't verify the date of MEG recordings
-% if the corresponding scans.tsv file entry is already shifted.
+% files. 
 %
-% Marc Lalancette 1922-03-04
-
+% To fix shifting errors, e.g. inside MEG files, copy backup scans file and shift again.
+%
+% Marc Lalancette 1924-10-12
 if nargin < 3 
     Subjects = {};
 elseif ischar(Subjects)
     Subjects = {Subjects};
+elseif ~iscell(Subjects)
+    error('Subjects should be specified as a cell array of strings, e.g. {''sub-01'', ''sub-02''}');
 end
 if nargin < 2 || isempty(TrustScans)
     TrustScans = false;
@@ -76,17 +87,14 @@ if isempty(Subjects)
 else
     ScansList = [];
     for iSub = 1:numel(Subjects)
-%         if iSub == 1
-%             ScansList = dir(fullfile(BidsFolder, Subjects{iSub}, '**', '*_scans.tsv'));
-%         else
-            ScansList = [ScansList; dir(fullfile(BidsFolder, Subjects{iSub}, '**', '*_scans.tsv'))]; %#ok<AGROW> 
+        ScansList = [ScansList; dir(fullfile(BidsFolder, Subjects{iSub}, '**', '*_scans.tsv'))]; %#ok<AGROW>
     end
 end
 nScans = numel(ScansList);
 
 % Catch errors to save database before exiting.
 try
-
+    isDbModified = false;
     for iFile = 1:nScans
         % Backup scans file in sourcedata.
         ScansFile = fullfile(ScansList(iFile).folder, ScansList(iFile).name);
@@ -109,12 +117,14 @@ try
             iDb = size(Db, 1) + 1;
             % Avoid warning, fill entire row.
             Db(iDb,:) = {Subject, NaN, '', NaT, NaT};
+            isDbModified = true;
         end
         Scans = ReadScans(fullfile(ScansList(iFile).folder, ScansList(iFile).name));
         if isempty(Scans)
             warning('Empty scans table: %s', ScansList(iFile).name);
             continue;
         end
+        % New in database, or not shifted
         if isnan(Db.shift(iDb)) || Db.shift(iDb) == 0
             % Presume first scan found is earliest one.
             % Unless bugged date < 2001.
@@ -123,21 +133,22 @@ try
                 if Scans.acq_time(iFirst) < TargetInitialDate - years(iFirst) && iFirst < size(Scans,1)
                     % Probably res4 bug. Try another scan.
                     iFirst = 2;
-                else
-                    [isOk, Msg] = copyfile(BackupFile, ScansFile);
-                    if ~isOk
-                        warning(Msg);
+                    if Scans.acq_time(iFirst) < TargetInitialDate + years(iFirst)
+                        error('Bad data dates, maybe res4 bug. %s', ScansList(iFile).name);
                     end
-                    error('Missing in database, seems already shifted. Restored backup. %s', ScansList(iFile).name);
+                else
+                    % [isOk, Msg] = copyfile(BackupFile, ScansFile);
+                    % if ~isOk
+                    %     warning(Msg);
+                    % end
+                    error('Missing in database and/or seems already shifted: %s', ScansList(iFile).name); % Restored backup. (not sure why I wanted to restore here)
                 end
             end
-            if Scans.acq_time(iFirst) < TargetInitialDate + years(iFirst)
-                error('Bad data dates, maybe res4 bug. %s', ScansList(iFile).name);
-            end
-            Db.first_scan{iDb} = Scans.filename{1};
-            Db.real_datetime(iDb) = Scans.acq_time(1);
-            Db.shift(iDb) = round(days(TargetInitialDate - Scans.acq_time(1)));
+            Db.first_scan{iDb} = Scans.filename{iFirst};
+            Db.real_datetime(iDb) = Scans.acq_time(iFirst);
+            Db.shift(iDb) = round(days(TargetInitialDate - Scans.acq_time(iFirst)));
             Db.shifted_datetime(iDb) = Db.real_datetime(iDb) + days(Db.shift(iDb));
+            isDbModified = true;
             % Apply shift and save.
             Shift(Scans, false); % no need to verify
         else
@@ -156,18 +167,22 @@ end
 
 % --------------------------------------------------
     function Shift(Scans, Verify)
+        % If we don't verify, we shift even if not needed.
         if nargin < 2 || isempty(Verify)
             Verify = true;
         end
 
         % Apply date shift to scans entries
+        ScansBak = ReadScans(BackupFile);
         if Verify
-            isShift = abs(days(Scans.acq_time - TargetInitialDate)) > abs(days(Scans.acq_time - Db.real_datetime(iDb)));
+            % Verify "better" with backup date.
+            isShift = Scans.acq_time ~= (ScansBak.acq_time + days(Db.shift(iDb)));
+            %isShift = abs(days(Scans.acq_time - TargetInitialDate)) > abs(days(Scans.acq_time - Db.real_datetime(iDb)));
         else
             isShift = true(size(Scans, 1), 1);
         end
         if any(isShift)
-            Scans.acq_time(isShift) = Scans.acq_time(isShift) + days(Db.shift(iDb));
+            Scans.acq_time(isShift) = ScansBak.acq_time(isShift) + days(Db.shift(iDb));
             WriteScans(ScansFile, Scans);
         end
         % Now apply shift to MEG data files.
@@ -185,11 +200,15 @@ end
                 end
             end
         end
-    end 
+    end
 
     function SaveDb()
-        fprintf('Saving database.\n');
-        writetable(Db, DbFile, 'FileType', 'text', 'Delimiter', '\t', 'WriteVariableNames', true);
+        if isDbModified
+            fprintf('Saving date shifting database.\n');
+            writetable(Db, DbFile, 'FileType', 'text', 'Delimiter', '\t', 'WriteVariableNames', true);
+        else
+            fprintf('No change in date shifting database.\n');
+        end
     end
 end
 

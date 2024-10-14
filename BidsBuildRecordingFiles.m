@@ -18,7 +18,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
 % iLog: File ID of log file already open for writing, or output to Matlab command
 % window (iLog=1, default).
 %
-% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2022-07-14
+% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2024-10-09
     
     if nargin < 6 || isempty(iLog)
         iLog = 1;
@@ -70,10 +70,11 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     end
     
     BadChannelsFile = fullfile(RecPath, [RecName, RecExt], 'BadChannels');
-    % Recreate if missing (e.g. ds transferred via OneDrive).
+    % Not sure why we were recreating this empty optional file. Avoid for efficiency.
     if ~exist(BadChannelsFile, 'file')
-        Fid = fopen(BadChannelsFile, 'w');
-        fclose(Fid);
+        % % Recreate if missing (e.g. ds transferred via OneDrive).
+        % Fid = fopen(BadChannelsFile, 'w');
+        % fclose(Fid);
         BadChannels = {};
     else        
         Fid = fopen(BadChannelsFile);
@@ -147,7 +148,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         Pos = in_channel_pos(fullfile(PosFile(iPos).folder, PosFile(iPos).name));
         if nHeadPoints <= 1 && isfield(Pos, 'HeadPoints') % && isfield(Pos.HeadPoints, 'Label')
             iAnatomical = find(strcmp(Pos.HeadPoints.Type, 'CARDINAL'));
-            iHeadCoils = find(strcmp(Pos.HeadPoints.Type, 'HPI'));
+            iHeadCoils = find(ismember(Pos.HeadPoints.Type, {'HPI','HLU'}));
             nHeadPoints = sum(strcmp(Pos.HeadPoints.Type, 'EXTRA'));
             if nHeadPoints > 1
                 break;
@@ -159,7 +160,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         %         end
     end
     
-    % Find associated noise recording in BIDS dataset.
+    % Find associated noise recording in BIDS dataset. Relative path from BIDS root (sub-x/ses-y/...)
     Noise = BidsFindAssociatedNoise(Recording, BidsInfo, iLog);
     if isfield(BidsInfo, 'Noise') && Output
         BidsInfo = rmfield(BidsInfo, 'Noise');
@@ -181,7 +182,8 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     % Find associated structural MRI.
     iRelativePath = strfind(RecPath, [filesep, 'sub-']);
     BidsFolder = RecPath(1:iRelativePath(1)-1);
-    NiiFile = dir(fullfile(BidsFolder, ['sub-', BidsInfo.Subject], ['_ses-', BidsInfo.Session], 'anat', '*.nii*'));
+    % Now looking across sessions, but later using first found.
+    NiiFile = dir(fullfile(BidsFolder, ['sub-', BidsInfo.Subject], 'ses-*', 'anat', '*.nii*'));
     
     
     % ------------------------------------------------------------
@@ -286,7 +288,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
             J.SubjectArtefactDescription = '';
         end
         if ~isNoise && ~isempty(Noise)
-            J.AssociatedEmptyRoom = Noise;
+            J.AssociatedEmptyRoom = ['bids::' Noise];
         end
         J.HardwareFilters.Antialiasing.Type = 'Low pass';
         J.HardwareFilters.Antialiasing.Class = 'Elliptic';
@@ -369,9 +371,9 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
                 % Round to micro-m
                 if ~isempty(iHeadCoils)
                     J.AnatomicalLandmarkCoordinates = struct( ...
-                        'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
-                        'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
-                        'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
+                        'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'NAS', 'Nasion', 'nasion'})), 2)', 4), ...
+                        'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'LPA', 'left'})), 2)', 4), ...
+                        'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'RPA', 'right'})), 2)', 4) );
                     J.AnatomicalLandmarkCoordinateSystem = System;
                     J.AnatomicalLandmarkCoordinateUnits = Units;
                     J.AnatomicalLandmarkCoordinateSystemDescription = DigDescription;
@@ -392,9 +394,9 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
                     % Assume that if only one set of markers were digitized, they are
                     % the head coils.
                     J.HeadCoilCoordinates = struct( ...
-                        'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'Nasion')), 2)', 4), ...
-                        'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'LPA')), 2)', 4), ...
-                        'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'RPA')), 2)', 4) );
+                        'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'NAS', 'Nasion', 'nasion'})), 2)', 4), ...
+                        'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'LPA', 'left'})), 2)', 4), ...
+                        'coilR', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'RPA', 'right'})), 2)', 4) );
                     J.HeadCoilCoordinateSystem = System;
                     J.HeadCoilCoordinateUnits = Units;
                     J.HeadCoilCoordinateSystemDescription = DigDescription;
@@ -407,8 +409,18 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
             end
 
             if ~isempty(NiiFile)
-                J.IntendedFor = fullfile(['_ses-', BidsInfo.Session], 'anat', NiiFile(1).name); % Path or list of path relative to the subject subfolder pointing to the structural MRI.
-                %         JT1wMRI.AnatomicalLandmarkCoordinates = ; % voxel coordinates of the actual anatomical landmarks for co-registration of MEG with structural MRI.
+                % Path or list of path as BIDS-URI, now deprecated: relative to the subject subfolder pointing to the structural MRI.
+                nNii = numel(NiiFile);
+                if nNii > 1
+                    J.IntendedFor = cell(numel(NiiFile),1);
+                    for iNii = 1:numel(NiiFile)
+                        J.IntendedFor{iNii} = ['bids::' ...
+                            replace(fullfile(NiiFile(iNii).folder, NiiFile(iNii).name), [BidsFolder filesep], '')];
+                        % JT1wMRI.AnatomicalLandmarkCoordinates = ; % voxel coordinates of the actual anatomical landmarks for co-registration of MEG with structural MRI.
+                    end
+                else
+                    J.IntendedFor = ['bids::' replace(fullfile(NiiFile(1).folder, NiiFile(1).name), [BidsFolder filesep], '')];
+                end
                 if ispc()
                     J.IntendedFor = strrep(J.IntendedFor, '\', '/');
                 end
@@ -568,18 +580,30 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         % Convert struct to table.
         clear J;
         J = table('Size', [0, 5], 'VariableTypes', {'double', 'double', 'double', 'double', 'cellstr'});
-        % BIDS requires a duration, but CTF doesn't provide that info, so we must put 0.
+        % BIDS requires a duration, but CTF doesn't provide that info, so we must put 0 or n/a.
         for m = 1:numel(Mrk)
             if ~isempty(Mrk(m).Count) && Mrk(m).Count > 0
+                % Ignore fake CTF events repeated at start of each trial for ongoing signals. We're
+                % only ignoring them when all events are at 0, so for now we're keeping fakes when
+                % there are any real ones.
+                TrialSamples = round(Mrk(m).Samples(:,2) * Res4.gSetUp.sample_rate);
+                if all(TrialSamples == 0)
+                    continue;
+                end
                 MrkVal = {Mrk(m).Name};
+                % Need (:) otherwise it names the variable TrialSamples instead of Var4, and it
+                % won't concatenate with the empty table due to name mismatch.
                 J = vertcat(J, table( (Res4.gSetUp.no_samples * (Mrk(m).Samples(:,1) - 1)) / Res4.gSetUp.sample_rate + Mrk(m).Samples(:,2), ...
                     zeros(Mrk(m).Count, 1), Mrk(m).Samples(:,1), ...
-                    round(Mrk(m).Samples(:,2) * Res4.gSetUp.sample_rate), MrkVal(ones(Mrk(m).Count, 1)) ));
+                    TrialSamples(:), MrkVal(ones(Mrk(m).Count, 1)) ));
             end
         end
         % We have to name the variables after filling the table otherwise it won't let us concatenate.
         J.Properties.VariableNames = {'onset', 'duration', 'ds_trial', 'sample', 'value'};
         
+        % Events should be sorted by onset according to BIDS.
+        J = sortrows(J);
+
         if SaveFiles && ~isempty(J)
             writetable(J, EventsFile, 'FileType', 'text', 'Delimiter', '\t');
         elseif exist(EventsFile, 'file') && isempty(J)

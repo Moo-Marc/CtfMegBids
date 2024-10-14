@@ -6,8 +6,8 @@ function BidsRenameSubjects(BidsFolder, RenameFile)
 
     isFull = true;
 
-    % Load spreadsheet.
-    Names = readcell(RenameFile, 'NumHeaderLines', 1);
+    % Load spreadsheet, only first 2 columns, skip header line.
+    Names = readcell(RenameFile, 'NumHeaderLines', 1, 'Range', 'A:B');
     Names = replace(Names, 'sub-', '');
     % Remove '_' and '-'.
     Names = replace(Names, {'_', '-'}, '');

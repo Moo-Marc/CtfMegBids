@@ -1,9 +1,12 @@
 function BidsSwapSessions(BidsSubjectFolder, Ses1, Ses2)
 % Swap two session names (usually numbers).
 %
-% Both session names must be given, without 'sub-', but as char.
+% Both full session names must be given, without 'ses-', as char.
 
 warning('This seems still buggy, verify after!');
+if ~ischar(Ses1) || ~ischar(Ses2)
+    error('Both full session names must be given, but without "ses-" and as character arrays.');
+end
 
 isFull = true;
 % Temporary session name.

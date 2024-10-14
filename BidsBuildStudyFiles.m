@@ -4,9 +4,9 @@ function BidsInfo = BidsBuildStudyFiles(BidsFolder, BidsInfo, Overwrite, SaveFil
     %
     % INPUT:    BidsFolder: Path to the root study folder
     %
-    % Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2021-05-18
+    % Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2024-10-11
     
-    BIDSVersion = '1.7.0';
+    BIDSVersion = '1.10.0';
     
     if nargin < 5 || isempty(RemoveEmptyFields)
         RemoveEmptyFields = false;

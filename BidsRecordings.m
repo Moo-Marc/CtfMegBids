@@ -1,18 +1,20 @@
 function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose, NoiseFirst)
     % Find MEG recordings and extract their metadata from a CTF MEG BIDS dataset.
     %
-    % [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder)
+    % [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose, NoiseFirst, SubOnly)
     %
-    % The returned Recordings and optionally Dataset structures contains all
-    % BIDS metadata.  If the provided BidsFolder is not the root BIDS folder,
-    % only recordings found under the provided folder will be listed.  However,
-    % if it is not a subfolder of a BIDS dataset, an error is returned. The
-    % returned BidsFolder is the root BIDS folder.
+    % The returned Recordings and optionally Dataset structures contains all BIDS metadata.  If the
+    % provided BidsFolder is not the root BIDS folder, only recordings found under the provided
+    % folder will be listed.  However, if it is not a subfolder of a BIDS dataset, an error is
+    % returned. The returned BidsFolder is the root BIDS folder. Only the recordings found under
+    % BidsRootFolder/sub-*/... are processed, not those under sourcedata or derivatives for example.
+    % To process such a sub-dataset (e.g. sourcedata), it must contain a dataset_description.json
+    % file and appear as a full valid BIDS dataset itself.
     %
-    % If NoiseFirst is true, empty room noise recordings will be listed first. This
-    % is used for associating noise recordings in other functions.
+    % If NoiseFirst is true, empty room noise recordings will be listed first. This is used for
+    % associating noise recordings in other functions.
     %
-    % Marc Lalancette, 2021-04-27
+    % Marc Lalancette, 2024-10-11
     
     % Dependencies
     BidsSetPath;
@@ -24,8 +26,12 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
         Verbose = true;
     end
     
-    % Find CTF recordings (*.ds) in this folder.
-    RecordingsList = dir(fullfile(BidsFolder, '**', '*.ds'));
+    % Find CTF recordings (*.ds) in this folder. 
+    % This can take a few minutes for large datasets.
+    if Verbose
+        fprintf('Searching for recordings in BIDS folder...\n');
+    end
+    InputFolder = BidsFolder;
     % Find root BIDS folder.
     DataDescripFile = fullfile(BidsFolder, 'dataset_description.json');
     while ~exist(DataDescripFile, 'file')
@@ -36,10 +42,19 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
         BidsFolder = fileparts(BidsFolder);
         DataDescripFile = fullfile(BidsFolder, 'dataset_description.json');
     end
-    % Remove hz.ds
-    RecordingsList(strcmpi({RecordingsList.name}, 'hz.ds')) = [];
+    % Only process parts of the main BIDS dataset, not sub-datasets.
+    if strcmp(InputFolder, BidsFolder) 
+        RecordingsList = dir(fullfile(BidsFolder, 'sub-*', '**', '*.ds'));
+    elseif contains(InputFolder, fullfile(BidsFolder, 'sub-'))
+        RecordingsList = dir(fullfile(InputFolder, '**', '*.ds'));
+    else
+        error('Cannot process sub-dataset of main BIDS dataset, e.g. sourcedata or derivatives, unless it also has a dataset_description.json');
+    end
+    % Remove hz.ds 
+    % I use contains to also remove my renamed ..._meghz.ds
+    RecordingsList(contains({RecordingsList.name}, 'hz.ds', 'IgnoreCase', true)) = [];
     nR = numel(RecordingsList);
-        
+
     if nR > 0
         % Pre-allocate, as a column.
         % Structures are *not* empty (only no fields) on purpose, so we can add fields.
@@ -202,7 +217,7 @@ function [Recordings, Dataset, BidsFolder] = BidsRecordings(BidsFolder, Verbose,
     
     if NoiseFirst && nR > 1
         % List noise recordings first.  For BidsRebuildAllFiles.
-        Recordings = Recordings([find([Recordings(:).isNoise]), find(~[Recordings(:).isNoise])]);
+        Recordings = Recordings([find([Recordings.isNoise]), find(~[Recordings.isNoise])]);
     end
     
     % Also extract global metadata if requested.
