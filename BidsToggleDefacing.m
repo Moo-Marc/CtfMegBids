@@ -12,6 +12,9 @@ function BidsToggleDefacing(BidsFolder, isDeface, ContinueFrom, FixCoordinates, 
 
     if nargin < 6 || isempty(AnatList)
         AnatList = [];
+        isExportAnatList = true;
+    else
+        isExportAnatList = false;
     end
     if nargin < 5 || isempty(isDenoised)
         isDenoised = false;
@@ -41,6 +44,9 @@ function BidsToggleDefacing(BidsFolder, isDeface, ContinueFrom, FixCoordinates, 
     % Find all MRIs in subject folders.
     if isempty(AnatList)
         AnatList = dir(fullfile(BidsFolder, 'sub-*', '**', '*_T1w.nii*'));
+    end
+    if isExportAnatList
+        assignin('base', 'AnatList', AnatList);
     end
     nA = numel(AnatList);
 

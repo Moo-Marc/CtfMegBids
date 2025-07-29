@@ -18,8 +18,15 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
 % iLog: File ID of log file already open for writing, or output to Matlab command
 % window (iLog=1, default).
 %
-% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2024-10-09
+% If there are head points and anatomical fiducials, but no head coils, as was the case for old
+% recordings collected with the initial Digitize panel from Brainstorm around 2013, we assume the
+% anat fids are actually head coils and rename them in the pos file (hard coded option below). 
+%
+% Authors: Elizabeth Bock, Marc Lalancette, 2017 - 2025-07-15
     
+    % If no head coils but anat fids, rename them as HPI and save pos (after backup under sourcedata folder)?
+    isRenameHpi = true;
+
     if nargin < 6 || isempty(iLog)
         iLog = 1;
     end
@@ -158,6 +165,9 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         %                 ~isempty([Pos.Channel(contains({Pos.Channel.Type}, 'EEG')).Loc])
         %             EEGLoc = true;
         %         end
+    end
+    if isRenameHpi && isempty(iHeadCoils) && ~isempty(iAnatomical)
+        PosRenameFids(PosFile(iPos));
     end
     
     % Find associated noise recording in BIDS dataset. Relative path from BIDS root (sub-x/ses-y/...)
@@ -309,7 +319,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         if RemoveEmptyFields
             J = StructTrim(J);
         end
-        if SaveFiles
+        if SaveFiles && (~exist(MegJsonFile, 'file') || Overwrite)
             % Save the struct to a json file.
             WriteJson(MegJsonFile, J);
         end
@@ -333,13 +343,18 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     % What can change between (regular) runs is the presence of EEG channels.
     % Don't create the coord file for noise: no head, not CTF coord sys.
     if ~isNoise
-        % This is technically wrong, we could load the meg.json to check, but if
-        % CoordFile already exists, assume it's ok.  The risk of missing the
+        % Assuming no EEG if no EEGChannelCount is technically wrong, we could load the meg.json to
+        % check, but if CoordFile already exists, assume it's ok.  The risk of missing the
         % EEGCoordinateSystem info is low anyway.
-        if ~exist('EEGChannelCount', 'var')
-            EEGChannelCount = 0;
+        OverwriteForEeg = false;
+        if exist('EEGChannelCount', 'var') && EEGChannelCount > 0 && exist(CoordFile, 'file') && ~Overwrite
+            % Check if EEG missing before overwriting despite not asked.
+            J = JsonRead(CoordFile);
+            if ~isfield(J, 'EEGCoordinateSystem')
+                OverwriteForEeg = true;
+            end
         end
-        if ~exist(CoordFile, 'file') || Overwrite || Output || EEGChannelCount > 0
+        if ~exist(CoordFile, 'file') || Overwrite || OverwriteForEeg || Output
             J = struct();
             System = 'CTF';
             Units = 'cm';
@@ -363,20 +378,14 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
                 J.DigitizedHeadPointsCoordinateUnits = Units;
                 J.DigitizedHeadPointsCoordinateSystemDescription = DigDescription;
             end
-            % Head coil coordinates are available both in the digitized file and
-            % MEG recordings. Here we display the digitized ones since the
-            % latter varies per recording.
+            % Head coil coordinates are available both in the digitized file and MEG recordings.
+            % Here we save the digitized ones since the latter varies per recording. Save anatomical
+            % landmark description after head coils, as it will make it easier to replace that part
+            % after coregistration.
             if DigitizedLandmarks
                 % We say the coordinates are in cm, so convert them to cm.
                 % Round to micro-m
                 if ~isempty(iHeadCoils)
-                    J.AnatomicalLandmarkCoordinates = struct( ...
-                        'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'NAS', 'Nasion', 'nasion'})), 2)', 4), ...
-                        'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'LPA', 'left'})), 2)', 4), ...
-                        'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'RPA', 'right'})), 2)', 4) );
-                    J.AnatomicalLandmarkCoordinateSystem = System;
-                    J.AnatomicalLandmarkCoordinateUnits = Units;
-                    J.AnatomicalLandmarkCoordinateSystemDescription = DigDescription;
                     J.HeadCoilCoordinates = struct( ...
                         'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-N')), 2)', 4), ...
                         'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, strcmp(Pos.HeadPoints.Label, 'HPI-L')), 2)', 4), ...
@@ -384,15 +393,12 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
                     J.HeadCoilCoordinateSystem = System;
                     J.HeadCoilCoordinateUnits = Units;
                     J.HeadCoilCoordinateSystemDescription = DigDescription;
-                    % Don't assume head coil positioning if more than a few EEG channels.
-                    if EEGChannelCount > 10
-                        J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils, usually placed above the nasion on the forehead (coilN) and near the pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
-                    else
-                        J.FiducialsDescription = 'The anatomical landmarks are the nasion and the left and right junctions between the tragus and the helix.  The head coils are placed above the nasion on the forehead (coilN) and near the pre-auricular points (coilL and coilR).';
-                    end
-                else %if isempty(iHeadCoils) && ~isempty(iAnatomical)
-                    % Assume that if only one set of markers were digitized, they are
-                    % the head coils.
+                elseif ~isempty(iAnatomical) % && isempty(iHeadCoils) 
+                    % Assume that if only one set of fids were digitized, they are the head coils.
+                    % But warn. There's a hard-coded option near the top of this function for
+                    % renaming them when first loading the pos file. 
+                    warning(['No HPI-labeled digitized points, assuming digitized "anat fids" are actually head coils. ', ...
+                        'They should be renamed in: %s'], PosFile(iPos).name);
                     J.HeadCoilCoordinates = struct( ...
                         'coilN', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'NAS', 'Nasion', 'nasion'})), 2)', 4), ...
                         'coilL', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'LPA', 'left'})), 2)', 4), ...
@@ -400,12 +406,30 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
                     J.HeadCoilCoordinateSystem = System;
                     J.HeadCoilCoordinateUnits = Units;
                     J.HeadCoilCoordinateSystemDescription = DigDescription;
-                    if EEGChannelCount > 10
-                        J.FiducialsDescription = 'The head coils, usually placed above the nasion on the forehead (coilN) and near the pre-auricular points (coilL and coilR), may have been placed differently because of EEG.';
-                    else
-                        J.FiducialsDescription = 'The head coils are placed above the nasion on the forehead (coilN) and near the pre-auricular points (coilL and coilR).';
-                    end
                 end
+                % Either way, here we have head coils. 
+                FiducialsDescription = 'The head coils are placed above the nasion on the forehead (coilN) and near the pre-auricular points (coilL and coilR). All coordinates here were obtained with a Polhemus Fastrak 3D digitization system, averaged if measured multiple times.';
+                % Don't assume head coil positioning if more than a few EEG channels.
+                if EEGChannelCount > 10
+                    FiducialsDescription = [FiducialsDescription ' The coil positions may be slightly altered due to the presence of EEG.'];
+                end
+                % Add anatomical landmarks if digitized anat fids are present. These may be
+                % replaced after coregistration, but here we're saving the raw metadata.
+                if ~isempty(iAnatomical)
+                    J.AnatomicalLandmarkCoordinates = struct( ...
+                        'NAS', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'NAS', 'Nasion', 'nasion'})), 2)', 4), ...
+                        'LPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'LPA', 'left'})), 2)', 4), ...
+                        'RPA', NumTrim(100 * mean(Pos.HeadPoints.Loc(:, ismember(Pos.HeadPoints.Label, {'RPA', 'right'})), 2)', 4) );
+                    J.AnatomicalLandmarkCoordinateSystem = System;
+                    J.AnatomicalLandmarkCoordinateUnits = Units;
+                    J.AnatomicalLandmarkCoordinateSystemDescription = DigDescription;
+                    % Append to description.
+                    % During coregistration, we look for and replace the sentence starting with 
+                    % "The anatomical landmarks", so maintain this if editing.
+                    FiducialsDescription = [FiducialsDescription ' The anatomical landmarks are the nasion and the left and right pre-auricular points, the latter defined as the junction between the tragus and the helix.'];
+                end
+                % This field is added here so it appears after coils and anat fids.
+                J.FiducialsDescription = FiducialsDescription;
             end
 
             if ~isempty(NiiFile)
@@ -432,7 +456,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
             if RemoveEmptyFields
                 J = StructTrim(J);
             end
-            if SaveFiles
+            if SaveFiles && (~exist(CoordFile, 'file') || Overwrite || OverwriteForEeg)
                 % Save the struct to a json file.
                 WriteJson(CoordFile, J);
             end
@@ -559,7 +583,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         end % channel loop
         
         J = struct2table(J);
-        if SaveFiles
+        if SaveFiles && (~exist(ChannelFile, 'file') || Overwrite)
             writetable(J, ChannelFile, 'FileType', 'text', 'Delimiter', '\t');
         end
         if Output
@@ -604,7 +628,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
         % Events should be sorted by onset according to BIDS.
         J = sortrows(J);
 
-        if SaveFiles && ~isempty(J)
+        if SaveFiles && ~isempty(J) && (~exist(EventsFile, 'file') || Overwrite)
             writetable(J, EventsFile, 'FileType', 'text', 'Delimiter', '\t');
         elseif exist(EventsFile, 'file') && isempty(J)
             delete(EventsFile);
@@ -856,3 +880,19 @@ function [Markers, FileDataset] = openmrk(Dataset, Original, Quiet)
   
   
 end
+
+
+function J = JsonRead(File)
+    fid = fopen(File, 'r');
+    if (fid < 0)
+        warning(['Cannot open JSON file: ' File]);
+    end
+    % Read file
+    inString = fread(fid, [1, Inf], '*char');
+    % Close file
+    fclose(fid);
+    J = jsondecode(inString);
+end
+
+
+

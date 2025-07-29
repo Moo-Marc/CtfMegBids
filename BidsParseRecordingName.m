@@ -6,7 +6,7 @@ function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySe
     %
     % BIDS: sub-<label>[_ses-<label>]_task-<label>[_acq-<label>][_run-<index>][_proc-<label>]_meg.<manufacturer_specific_extension>
     % In the second usage [NOT YET IMPLEMENTED], Entity is e.g. 'subject', 'session', 'task', etc.
-    % (short version supported, e.g. 'sub' or 'sub-')
+    % (short version of entity names is supported, e.g. 'sub' or 'sub-').
     %
     % Marc Lalancette 2020-03-03
 

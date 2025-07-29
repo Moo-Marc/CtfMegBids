@@ -184,7 +184,7 @@ UnknownFiles = dir(fullfile(newDs, '*'));
 UnknownFiles = UnknownFiles(iU);
 if ~isempty(iU)
     warning('Unknown files in %s', newDs);
-    disp(UnknownFiles.name);
+    disp(strjoin({UnknownFiles.name}, ', '));
 end
 
 %% Delete unnecessary files

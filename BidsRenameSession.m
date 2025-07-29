@@ -1,6 +1,10 @@
 function BidsRenameSession(BidsSubjectFolder, OldNamePart, NewNamePart, isFull)
     % Rename a session ID in a CTF BIDS subject folder (and matching in sub-datasets).
     %
+    % Name parts should not contain "ses-"
+    % isFull true means the full session name is provided, instead of just
+    % part.
+    %
     % This now tries to rename inside json files (_meg.json AssociatedEmptyRoom, _coordsystem.json
     % DigitizedHeadPoints) and warns if fails, in which case it requires running BidsRebuildAllFiles
     % after.
