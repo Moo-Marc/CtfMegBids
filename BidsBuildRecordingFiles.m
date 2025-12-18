@@ -58,7 +58,7 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
     end
     
     [RecPath, RecName, RecExt] = fileparts(Recording);
-    isNoise = contains(RecName, 'emptyroom') || strcmpi(BidsInfo.Task, 'noise');
+    isNoise = contains(RecName, 'emptyroom') || strncmpi(BidsInfo.Task, 'noise', 5);
     if isfield(BidsInfo, 'isNoise') && xor(isNoise, BidsInfo.isNoise)
         fprintf(iLog, '  Warning: Conflicting info whether this is a noise recording, ignoring BidsInfo.isNoise: %s\n', RecName);
     end 
@@ -567,9 +567,19 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
             %                 strtok(Res4.channel_names{iChan}, '-'), Res4.SensorTypes{iType}, Res4.SensorUnit{iType}, Res4.SensorDesc{iType}, ...
             %                 num2str(Res4.gSetUp.sample_rate), Low, High, Notch, Filt, 'good');
             J(iChan).name = strtok(Res4.channel_names{iChan}, '-');
-            J(iChan).type = Res4.SensorTypes{iType};
-            J(iChan).units = Res4.SensorUnit{iType};
-            J(iChan).description = Res4.SensorDesc{iType};
+            % Workaround for missing type info, with software version 6.2.0-12694 and
+            % new DSQ-3500 electronics. These missing channel types include EEG related "analog
+            % front end" EAFE#### which are separate IC's that process the EEG signals, and "patient
+            % protection circuitry" EPPC####.
+            if iType > numel(Res4.SensorTypes)
+                J(iChan).type = 'n/a';
+                J(iChan).units = 'n/a';
+                J(iChan).description = 'n/a';
+            else
+                J(iChan).type = Res4.SensorTypes{iType};
+                J(iChan).units = Res4.SensorUnit{iType};
+                J(iChan).description = Res4.SensorDesc{iType};
+            end
             J(iChan).sampling_frequency = Res4.gSetUp.sample_rate; % num2str(Res4.gSetUp.sample_rate);
             J(iChan).low_cutoff = Low;
             J(iChan).high_cutoff = High;

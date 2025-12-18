@@ -146,6 +146,15 @@ function MegToBids(AcqDateFolder, Destination, UseSubEmptyroom, SaveLog, StudyNa
             % (The BIDS validator still flags some empty CTF-software-generated
             % .bak files.)
             BidsInfo.Ignore = {'*.log'};
+            if isBids
+                % Add missing optional fields that we require.
+                if ~isfield(BidsInfo, 'Session')
+                    BidsInfo.Session = '';
+                end
+                if ~isfield(BidsInfo, 'Run')
+                    BidsInfo.Run = '';
+                end
+            end
                 
             % CTF: <subject>_<procedure>_<date>_<task/run>[_AUX].ds
             if ~isBids
@@ -170,6 +179,7 @@ function MegToBids(AcqDateFolder, Destination, UseSubEmptyroom, SaveLog, StudyNa
                     BidsInfo.Acq = [];
                 end
             end % Recording format.
+
             
             %             % Check for additional subfolder that could be the study or subject.
             % In BIDS, would be modality, and not used anyway.
@@ -195,24 +205,28 @@ function MegToBids(AcqDateFolder, Destination, UseSubEmptyroom, SaveLog, StudyNa
                 end
             end
 
-            % Use standard name for noise recordings. Don't just use
-            % isNoise because of potential Overwrite info.
+            % Use standard name for noise recordings. Don't just use simpler isNoise above because
+            % of potential Overwrite info.
             if contains(BidsInfo.Subject, 'emptyroom') || strncmpi(BidsInfo.Task, 'Noise', 5)
+                isNoise = true;
                 if UseSubEmptyroom
                     BidsInfo.Subject = 'emptyroom';
                 end
                 % Careful not to try to give same name if run was not a number, e.g. in system test sessions.
-                if ~isempty(BidsInfo.Run) || strcmpi(TaskRun, 'noise')
+                if ~isBids && (~isempty(BidsInfo.Run) || strcmpi(TaskRun, 'noise'))
                     BidsInfo.Task = 'noise';
                 % else already joined noise and TaskRun text.
                 end
+            else
+                isNoise = false;
             end
             
             % Standardize resting state task names.  BIDS prescribes: "(for resting state use the rest prefix)"
             RestSynonyms = {'Spontaneous', 'Restingstate', 'Baselinerest', 'Resting', 'Rest', ...
                 'spontaneous', 'restingstate', 'baselinerest', 'restbaseline', 'resting', ...
                 'rest'};
-            if contains(BidsInfo.Task, RestSynonyms, 'IgnoreCase', true)
+            % We don't apply this to noise - we once had "Noise...Restarted" which included both.
+            if ~isNoise && contains(BidsInfo.Task, RestSynonyms, 'IgnoreCase', true)
                 for iSyn = 1:numel(RestSynonyms)
                     BidsInfo.Task = strrep(BidsInfo.Task, RestSynonyms{iSyn}, '');
                 end

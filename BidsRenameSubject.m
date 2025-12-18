@@ -3,7 +3,7 @@ function BidsRenameSubject(BidsFolder, OldNamePart, NewNamePart, isFull, Verbose
     %
     % Files, folders, inside BIDS scans.tsv and inside raw data files. Includes
     % elsewhere in potential "sub-datasets": sourcedata, derivatives, extras,
-    % etc. 
+    % etc. The "name parts" should exclude "sub-".
     %   
     % Marc Lalancette 2022-02-07
 

@@ -23,7 +23,7 @@ if nargin < 3 || isempty(iLog)
 end
 
     [RecPathFull, RecName, RecExt] = fileparts(Recording);
-    isNoise = contains(RecName, 'emptyroom') || strcmpi(BidsInfo.Task, 'noise');
+    isNoise = contains(RecName, 'emptyroom') || strncmpi(BidsInfo.Task, 'noise', 5);
 
     % Find associated noise recording in BIDS dataset.
     iRelativePath = strfind(RecPathFull, [filesep, 'sub-']);

@@ -9,7 +9,7 @@ function Extras = DsToBids(Recording, Destination, BidsInfo, Anonymize, ...
     %   Recording: Original CTF .ds folder.
     %   Destination: Base folder where BIDS subject folder is to be created.
     %   BidsInfo: Structure with fields Subject, Session, Task, and
-    %   optionally Acq, Run, Study, Ignore all strings, not numerical types. 
+    %   optionally Acq, Run, Study, Ignore; all strings, not numerical types. 
     %   BidsInfo.Ignore is a list of file types to ignore when validating
     %   the BIDS dataset, e.g. {'*.log'}.  If not empty, it
     %   creates the .bidsignore file in Destination.

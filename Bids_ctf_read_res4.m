@@ -1,12 +1,12 @@
 function [res4Info, DateBug] = Bids_ctf_read_res4(res4Path, isQuiet)
-
-% Oct 26, 2017: created - meets the requirements of MEG-BIDS v1
-% Elizabeth Bock
-%
 % 2019-03-08: Adjusted SensorDesc, units, output filter info, removed null
 % characters from date/time fields. (Should probably remove in all text
 % fields.)
-%  Marc Lalancette
+% 2025-10-17: Added new sensor types for software version 6.2.0-12694 and new DSQ-3500 electronics.
+% These new channel types include EEG related "analog front end" EAFE#### which are separate IC's
+% that process the EEG signals, and "patient protection circuitry" EPPC####.
+
+% Authors: Elizabeth Bock, Marc Lalancette
 
 if nargin < 2 || isempty(isQuiet)
     isQuiet = false;
