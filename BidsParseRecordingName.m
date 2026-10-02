@@ -1,17 +1,17 @@
-function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySession)
+function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, isWarnings)
     % Extract basic info from file name.
     %
-    % [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySession)
-    % [isFound, EntityValue] = BidsParseRecordingName(FullName, Entity)
+    % [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, isWarnings)
+    % [isFound, EntityValue] = BidsParseRecordingName(FullName, Entity) [NOT IMPLEMENTED]
     %
     % BIDS: sub-<label>[_ses-<label>]_task-<label>[_acq-<label>][_run-<index>][_proc-<label>]_meg.<manufacturer_specific_extension>
     % In the second usage [NOT YET IMPLEMENTED], Entity is e.g. 'subject', 'session', 'task', etc.
     % (short version of entity names is supported, e.g. 'sub' or 'sub-').
     %
-    % Marc Lalancette 2020-03-03
+    % Marc Lalancette 2026-09-21
 
-    if nargin < 3 || isempty(WarnEmptySession)
-        WarnEmptySession = true;
+    if nargin < 3 || isempty(isWarnings)
+        isWarnings = true;
     end
     if nargin < 2 || isempty(iLog)
         iLog = 1;
@@ -42,7 +42,7 @@ function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySe
     while ~isempty(Name)
         [Entity, Name] = strtok(Name, '-_'); %#ok<*STTOK>
         [ID, Name] = strtok(Name, '-_');
-        if isempty(ID)
+        if isempty(ID) && isWarnings
             fprintf(iLog, '  Warning: Empty BIDS recording name part: %s.\n', Entity);
         end
         switch Entity
@@ -58,15 +58,19 @@ function [isBids, BidsInfo] = BidsParseRecordingName(FullName, iLog, WarnEmptySe
                 BidsInfo.Run = ID;
             case 'proc'
                 %BidsInfo.Proc = ID;
-                fprintf(iLog, '  Warning: BIDS "proc" name entity not yet supported.\n');
+                if isWarnings
+                    fprintf(iLog, '  Warning: BIDS "proc" name entity not yet supported.\n');
+                end
             % case 'meg' % Last part of MEG recording name, do nothing.
             otherwise
-                fprintf(iLog, '  Error: Unrecognized BIDS recording name entity: %s. %s\n', Entity, FullName);
+                if isWarnings
+                    fprintf(iLog, '  Warning: Unrecognized BIDS recording name entity: %s. %s\n', Entity, FullName);
+                end
                 continue;
         end
     end
     
-    if WarnEmptySession && ~isfield(BidsInfo, 'Session')
+    if isWarnings && ~isfield(BidsInfo, 'Session')
         warning('Empty session not yet supported.');
     end
             

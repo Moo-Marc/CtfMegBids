@@ -8,12 +8,12 @@ function BidsInfo = BidsBuildRecordingFiles(Recording, BidsInfo, Overwrite, Save
 %   but these 2 "simplified" fields get removed in BidsInfo output.
 % All other fields (as returned by BidsRecordings) are optional and will have precedence.
 %
-% Overwrite [default false]: if true existing metadata files are replaced.  Does not
-% apply at the level of individual metadata fields: these are extracted from the raw
-% data files except for existing fields provided in BidsInfo which have precedence.
-% This is done at the first field level of each json file (not sub-fields), or at
-% once for the full content of tsv tables (coordsys or events). So care must be taken
-% or the new files could be missing fields and possibly be non-compliant.
+% Overwrite [default false]: if true existing metadata files are replaced.  Does not apply at the
+% level of individual metadata fields: these are extracted from the raw data files except for
+% existing fields provided in BidsInfo which have precedence. This BidsInfo content copying is done
+% at the first field level of each json file (not sub-fields), or at once for the full content of
+% tsv tables (coordsys or events). So care must be taken or the new files could be missing fields
+% and possibly be non-compliant.
 %
 % iLog: File ID of log file already open for writing, or output to Matlab command
 % window (iLog=1, default).

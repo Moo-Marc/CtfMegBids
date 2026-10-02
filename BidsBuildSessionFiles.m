@@ -68,7 +68,13 @@ function BidsInfo = BidsBuildSessionFiles(Recording, BidsInfo, Overwrite, SaveFi
     Scan = struct2table(Scan);    
 
     if isempty(BidsInfo)
-       [~, BidsInfo] = BidsParseRecordingName([RecName, RecExt]);
+        switch Modality
+            case 'meg'
+                [~, BidsInfo] = BidsParseRecordingName([RecName, RecExt]);
+            case 'anat'
+                % Avoid warnings from function which expects meg.
+                [~, BidsInfo] = BidsParseRecordingName([RecName, RecExt], [], false);
+        end
     end
     iRelativePath = strfind(RecPath, [filesep, 'sub-']);
     BidsFolder = RecPath(1:iRelativePath(1)-1);

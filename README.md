@@ -12,5 +12,5 @@ into the parent folder ("/CTF-acquisition" in the following example):
 See MegToBids.m for further usage documentation.
 
 Can run from the operating system command line, e.g.:
-matlab -nodisplay -nosplash -nodesktop -r "MegToBids('/CTF-acquisition/20250101');"
+matlab -batch "MegToBids('/CTF-acquisition/20250101');"
 
